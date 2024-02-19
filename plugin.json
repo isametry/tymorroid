@@ -1,0 +1,16 @@
+{
+    "id": "fakturoid_exporter",
+    "tymeMinVersion": "2024.3",
+    "version": "0.1",
+    "type": "[export]",
+    "name": "Tymorroid",
+    "summary": "Fakturoid invoices from Tyme",
+    "author": "isametry",
+    "authorUrl": "https://isametry.github.io",
+    "icon": "poweroutlet.type.f",
+    "scriptName": "script.js",
+    "scriptMain": "createInvoice()",
+    "scriptPreview": "generatePreview()", 
+    "formName": "form.json",
+    "localizationName": "localization.json"
+  }
