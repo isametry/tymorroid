@@ -1,0 +1,28 @@
+[
+    {
+        "id": "login_username",
+        "type": "text",
+        "name": "E-mail",
+        "placeholder": "example@email.cz",
+        "persist": true
+    },
+    {
+        "id": "login_key",
+        "type": "text",
+        "name": "API key",
+        "placeholder": "found in your Fakturoid user settings",
+        "persist": true
+    },
+    {
+        "id": "login_button",
+        "type": "button",
+        "name": "Login",
+        "actionFunction": "login()"
+    },
+    {
+        "id": "label_login",
+        "type": "hint",
+        "name": "",
+        "value":"Please log in"
+    }
+]
