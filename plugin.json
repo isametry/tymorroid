@@ -9,8 +9,8 @@
   "authorUrl": "https://isametry.github.io",
   "icon": "poweroutlet.type.f",
   "scriptName": "script.js",
-  "scriptMain": "generatePreview()",
-  "scriptPreview": "generatePreview()",
+  "scriptMain": "tymeThing.importEntries()",
+  "scriptPreview": "generatePreview(tymeThing, fakturoidThing)",
   "formName": "form.json",
   "localizationName": "localization.json"
 }

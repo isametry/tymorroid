@@ -8,7 +8,7 @@
     },
     {
         "id": "login_key",
-        "type": "text",
+        "type": "securetext",
         "name": "API key",
         "placeholder": "found in your Fakturoid user settings",
         "persist": true
@@ -17,12 +17,31 @@
         "id": "login_button",
         "type": "button",
         "name": "Login",
-        "actionFunction": "login()"
+        "actionFunction": "roid.login()"
     },
     {
-        "id": "label_login",
-        "type": "hint",
-        "name": "",
-        "value":"Please log in"
+        "id": "tyme_tasks",
+        "type":"tasks",
+        "name":""
+    },
+    {
+        "id": "start_date",
+        "type": "text",
+        "name": "Start date",
+        "placeholder": "1970-01-01",
+        "persist": true
+    },
+    {
+        "id": "end_date",
+        "type": "text",
+        "name": "End date",
+        "placeholder": "2099-12-31",
+        "persist": true
+    },
+    {
+        "id":"date_hint",
+        "type":"hint",
+        "name":"",
+        "value":"(leave either field empty for no lower / upper date limit)"
     }
 ]
