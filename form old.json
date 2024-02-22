@@ -1,0 +1,73 @@
+[
+    {
+        "id": "login_hint_1",
+        "type": "hint",
+        "name": "1.",
+        "value": "Please [visit Fakturoid](https://app.fakturoid.cz/), copy the URL of your account and paste it here:",
+        "actionFunction": "fakturoidThing.login()"
+    },
+    {
+        "id": "login_URL",
+        "type": "text",
+        "name": "",
+        "placeholder": "https://app.fakturoid.cz/robotjosef",
+        "persist": true
+    },
+    {
+        "id": "login_hint_2",
+        "type": "hint",
+        "name": "2.",
+        "value": "Put in the email you use with Fakturoid:"
+    },
+    {
+        "id": "login_username",
+        "type": "text",
+        "name": "",
+        "placeholder": "example@email.cz",
+        "persist": true
+    },
+    {
+        "id": "login_hint_3",
+        "type": "hint",
+        "name": "3.",
+        "value": "Go to [Fakturoid](https://app.fakturoid.cz/) → \"User Account\", copy the \"API v2 Key\" at the bottom, and paste it below:"
+    },
+    {
+        "id": "login_key",
+        "type": "securetext",
+        "name": "",
+        "placeholder": "abcdef123456",
+        "persist": true
+    },
+    {
+        "id": "login_button",
+        "type": "button",
+        "name": "Login",
+        "actionFunction": "fakturoidThing.login()"
+    },
+    {
+        "id": "tyme_tasks",
+        "type": "tasks",
+        "name": ""
+    },
+    {
+        "id": "start_date",
+        "type": "text",
+        "name": "Start date",
+        "placeholder": "1970-01-01",
+        "persist": true
+    },
+    {
+        "id": "end_date",
+        "type": "text",
+        "name": "End date",
+        "placeholder": "2099-12-31",
+        "persist": true
+    },
+    {
+        "id": "date_hint",
+        "type": "hint",
+        "name": "",
+        "value": "(leave either field empty for no lower / upper date limit)&AAA&"
+    }
+]

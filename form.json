@@ -1,28 +1,52 @@
 [
     {
+        "id": "login_URL",
+        "type": "text",
+        "name": "Your Fakturoid URL:",
+        "placeholder": "https://app.fakturoid.cz/robotjosef",
+        "persist": true
+    },
+    {
+        "id": "login_URL_hint",
+        "type": "hint",
+        "name": "",
+        "value": "Please log in to [Fakturoid](https://app.fakturoid.cz) in your browser, copy the URL and paste it above."
+    },
+    {
         "id": "login_username",
         "type": "text",
-        "name": "E-mail",
-        "placeholder": "example@email.cz",
+        "name": "Login Email:",
+        "placeholder": "josef@robot.cz",
         "persist": true
     },
     {
         "id": "login_key",
         "type": "securetext",
-        "name": "API key",
-        "placeholder": "found in your Fakturoid user settings",
+        "name": "API Key (v2):",
+        "placeholder": "abcdefghi123456789",
         "persist": true
+    },
+    {
+        "id": "login_key_hint",
+        "type": "hint",
+        "name": "",
+        "value": "You can find your API key in [Fakturoid](https://app.fakturoid.cz) → Settings → User acccount → \"API v2 Key\" at the bottom."
     },
     {
         "id": "login_button",
         "type": "button",
         "name": "Login",
-        "actionFunction": "roid.login()"
+        "actionFunction": "fakturoidThing.login()"
+    },
+    {
+        "id": "separator1",
+        "type": "separator",
+        "name":""
     },
     {
         "id": "tyme_tasks",
-        "type":"tasks",
-        "name":""
+        "type": "tasks",
+        "name": ""
     },
     {
         "id": "start_date",
@@ -39,9 +63,16 @@
         "persist": true
     },
     {
-        "id":"date_hint",
-        "type":"hint",
-        "name":"",
-        "value":"(leave either field empty for no lower / upper date limit)"
+        "id": "date_hint",
+        "type": "hint",
+        "name": "",
+        "value": "(you can leave the fields empty for no start / end date limit)"
+    },
+    {
+        "id": "dates_apply_button",
+        "type": "button",
+        "name": "Apply All",
+        "value": "",
+        "actionFunction": "tymeThing.readForm()"
     }
 ]
