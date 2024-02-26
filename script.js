@@ -9,6 +9,35 @@ function minsToHoursString(minutes) {
     return `${hours}:${rest}`;
 }
 
+class TymorroidBridge {
+    tyme_object;
+    fakturoid_object;
+
+    constructor(tymeObject, fakturoidObject) {
+        this.tyme_object = tymeObject;
+        this.fakturoid_object = fakturoidObject;
+    }
+
+    getPreview() {
+        this.tyme_object.importEntries();
+
+        let output = "";
+    
+        // Debug info:
+        output += `<tt>${this.tyme_object.debug_info_dates.join("<br>")}</tt>`;
+    
+        // INVOICE PREVIEW:
+        output += "<div style=\"border: 1px solid; padding: 6px\">";
+        for (let i = 0; i < this.tyme_object.time_entries.length; i++) {
+            output += `<br>${minsToHoursString(this.tyme_object.time_entries[i]["duration"])} | ${this.tyme_object.time_entries[i]["task"]}`;
+        }
+    
+        output += `<br><strong>Total: ${minsToHoursString(this.tyme_object.getTotalDuration())}</strong>`
+    
+        return output;
+    }
+}
+
 class FakturoidStuff {
     login_slug;
     login_email;
@@ -70,9 +99,18 @@ class FakturoidStuff {
     }
 }
 
+class InvoiceLine {
+    // "id": 1234,
+    // "name": "PC",
+    // "quantity": "1.0",
+    // "unit_name": "",
+    // "unit_price": "20000.0",
+    // "vat_rate": 21
+}
 
 class TymeStuff {
     time_entries;
+    invoice_entries;
     start_date;
     end_date;
     task_selection;
@@ -144,26 +182,20 @@ class TymeStuff {
         return sum;
     }
 
-    getPreview() {
-        this.importEntries();
+    exportEntries(join_mode) {
+        let output = [];
 
-        let output = "";
-
-        // Debug info:
-        output += `<tt>${this.debug_info_dates.join("<br>")}</tt>`;
-
-        // INVOICE PREVIEW:
-        output += "<div style=\"border: 1px solid; padding: 6px\">";
-        for (let i = 0; i < this.time_entries.length; i++) {
-            output += `<br>${minsToHoursString(this.time_entries[i]["duration"])} | ${this.time_entries[i]["task"]}`;
-        }
-
-        output += `<br><strong>Total: ${minsToHoursString(this.getTotalDuration())}</strong>`
-
-        return output;
+        // for (let i = 0; i < this.time_entries; i++) {
+        //     switch (join_mode) {
+        //         case "projects":
+        //             output
+        //         default:
+        //             break;
+        //     }
+        // }
     }
-
 }
 
 const tymeThing = new TymeStuff();
 const fakturoidThing = new FakturoidStuff();
+const mainThing = new TymorroidBridge(tymeThing, fakturoidThing);

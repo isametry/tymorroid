@@ -10,7 +10,7 @@
   "icon": "poweroutlet.type.f",
   "scriptName": "script.js",
   "scriptMain": "tymeThing.importEntries()",
-  "scriptPreview": "tymeThing.getPreview()",
+  "scriptPreview": "mainThing.getPreview()",
   "formName": "form.json",
   "localizationName": "localization.json"
 }
