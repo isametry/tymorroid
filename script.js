@@ -1,30 +1,28 @@
-function generatePreview(tymeObject, fakturoidObject) {
-    tymeObject.importEntries();
-    fakturoidObject.login();
-    let output = "";
+function htmlColor(string, color) {
+    return `<span style=\"color: ${color}\">${string}</span>`;
+}
 
-    // Debug info only:
-    output += `<tt>${tymeObject.debug_info_dates.join("")}<br>${fakturoidObject.login_status[0]}</tt>`;
-
-    // INVOICE:
-    output += "<div style=\"border: 1px solid; padding: 6px\">";
-    for (let i = 0; i < tymeObject.time_entries.length; i++) {
-        output += `<br>${tymeObject.time_entries[i]["duration"]}`;
-    }
-
-    output += `<br><strong>Total: ${tymeObject.getTotalDuration()}</strong>`
-
-    return output;
+function minsToHoursString(minutes) {
+    const whole_minutes = Math.round(minutes);
+    let rest = Math.round(whole_minutes % 60);
+    let hours = (whole_minutes - rest) / 60;
+    return `${hours}:${rest}`;
 }
 
 class FakturoidStuff {
     login_slug;
-    login_username;
+    login_email;
     login_key;
+    headers;
     login_status;
+    account_data;
 
     constructor() {
-        this.login_status = [""];
+        this.login_status = {
+            successful: false,
+            tldr: "Warning",
+            message: "Fakturoid connection status unknown"
+        };
     }
 
     readForm() {
@@ -32,29 +30,43 @@ class FakturoidStuff {
         let slug_candidate;
         const prefix = "app.fakturoid.cz/"
 
-        //  avoiding regex at all costs:
-        slug_candidate = form_URL.slice((form_URL.indexOf(prefix)+prefix.length))
+        // extract the "slug" (username) from the URL
+        // (and avoiding regex at all costs, lol):
+
+        slug_candidate = form_URL.slice((form_URL.indexOf(prefix) + prefix.length))
         slug_candidate = slug_candidate.slice(0, slug_candidate.indexOf("/"));
 
         this.login_slug = slug_candidate;
-        this.login_username = formValue.login_username;
+        this.login_email = formValue.login_email;
         this.login_key = formValue.login_key;
-
-        this.login_status[0] = `Fakturoid username: ${this.login_slug}`;
     }
 
     login() {
         this.readForm();
-        // try {
-        //     const response = await utils.request(url, method, headers, parameters);
-        //     if (!response.ok) {
-        //         throw new Error(`HTTP error! status: ${response.status}`);
-        //     }
-        //     const data = await response.json();
-        //     // Use the data as needed
-        // } catch (error) {
-        //     console.error(error);
-        // }
+        this.headers = {
+            "Authorization": `Basic ${utils.base64Encode(`${this.login_email}:${this.login_key}`)}`,
+            "User-Agent": "Fakturoid Exporter for Tyme (max@akrman.com)",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+
+        try {
+            const response = utils.request(`https://app.fakturoid.cz/api/v2/accounts/${this.login_slug}/account.json`, "GET", this.headers);
+            const ok = /2\d\d/;
+            if (!ok.test(response.result)) {
+                this.login_status.tldr = "Error"
+                this.login_status.message = `Fakturoid connection: HTML error ${response.statusCode}`;
+            }
+            this.login_status.successful = true;
+            this.account_data = JSON.parse(response.result);
+            this.login_status.tldr = "Success!"
+            this.login_status.message = `Fakturoid connection successful as ${this.account_data.name}`;
+
+        } catch (error) {
+            this.login_status.tldr = "Error";
+            this.login_status["message"] = `Fakturoid connection error (${error})`;
+        }
+        tyme.showAlert(this.login_status.tldr, this.login_status.message);
     }
 }
 
@@ -72,7 +84,6 @@ class TymeStuff {
     }
 
     readForm() {
-        // either use the date from the form, or ignore it entirely:
         this.start_date = this.evaluateFormDate(formValue.start_date, true);
         this.end_date = this.evaluateFormDate(formValue.end_date, false);
 
@@ -86,29 +97,29 @@ class TymeStuff {
         // -   otherwise, throw a super early / super late date (depending on is_start).
 
         // Additionally, describe the result in .debug_info_dates
-        // This is the only purpose of the inner if-statements. Otherwise, they are not needed.
+        // This is the only purpose of the inner if--else statements. Otherwise, they are not needed.
 
         const interpreted_date = new Date(form_date_string);
         if (isFinite(interpreted_date)) {
             if (is_start) { // for information only
-                this.debug_info_dates[0] = `<br><span style=\"color: green\">Start date: ${interpreted_date.toDateString()}</span>`;
+                this.debug_info_dates[0] = htmlColor(`Start date: ${interpreted_date.toDateString()}</span>`, "green");
             } else {
-                this.debug_info_dates[1] = `<br><span style=\"color: green\">End date: ${interpreted_date.toDateString()}</span>`;
+                this.debug_info_dates[1] = htmlColor(`End date: ${interpreted_date.toDateString()}</span>`, "green");
             }
             return interpreted_date;
 
         } else if (is_start) {
             if (form_date_string === "") { // for information only
-                this.debug_info_dates[0] = "<br><span style=\"color: green\">Start date: None </span>";
+                this.debug_info_dates[0] = htmlColor("Start date: None </span>", "green");
             } else {
-                this.debug_info_dates[0] = `<br><span style=\"color: orange\">Start date: Ignored \"${form_date_string}\". Please use valid date in YYYY-MM-DD format.</span>`;
+                this.debug_info_dates[0] = htmlColor(`Start date: Ignored \"${form_date_string}\". Use valid date in YYYY-MM-DD.</span>`, "orange");
             }
             return new Date("1971-01-02");
         } else {
             if (form_date_string === "") { // for information only
-                this.debug_info_dates[1] = "<br><span style=\"color: green\">End date: None </span>";
+                this.debug_info_dates[1] = htmlColor("End date: None </span>", "green");
             } else {
-                this.debug_info_dates[1] = `<br><span style=\"color: orange\">End date: Ignored \"${form_date_string}\". Please use valid date in YYYY-MM-DD format.</span>`;
+                this.debug_info_dates[1] = htmlColor(`End date: Ignored \"${form_date_string}\". Use valid date in YYYY-MM-DD.</span>`, "orange");
             }
             return new Date("2099-12-31");
         }
@@ -132,6 +143,26 @@ class TymeStuff {
 
         return sum;
     }
+
+    getPreview() {
+        this.importEntries();
+
+        let output = "";
+
+        // Debug info:
+        output += `<tt>${this.debug_info_dates.join("<br>")}</tt>`;
+
+        // INVOICE PREVIEW:
+        output += "<div style=\"border: 1px solid; padding: 6px\">";
+        for (let i = 0; i < this.time_entries.length; i++) {
+            output += `<br>${minsToHoursString(this.time_entries[i]["duration"])} | ${this.time_entries[i]["task"]}`;
+        }
+
+        output += `<br><strong>Total: ${minsToHoursString(this.getTotalDuration())}</strong>`
+
+        return output;
+    }
+
 }
 
 const tymeThing = new TymeStuff();

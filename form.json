@@ -13,7 +13,7 @@
         "value": "Please log in to [Fakturoid](https://app.fakturoid.cz) in your browser, copy the URL and paste it above."
     },
     {
-        "id": "login_username",
+        "id": "login_email",
         "type": "text",
         "name": "Login Email:",
         "placeholder": "josef@robot.cz",
@@ -33,9 +33,9 @@
         "value": "You can find your API key in [Fakturoid](https://app.fakturoid.cz) → Settings → User acccount → \"API v2 Key\" at the bottom."
     },
     {
-        "id": "login_button",
+        "id": "login_check_button",
         "type": "button",
-        "name": "Login",
+        "name": "Check Credentials",
         "actionFunction": "fakturoidThing.login()"
     },
     {
