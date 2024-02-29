@@ -41,7 +41,7 @@
     {
         "id": "separator1",
         "type": "separator",
-        "name":""
+        "name": ""
     },
     {
         "id": "tyme_tasks",
@@ -69,10 +69,38 @@
         "value": "(you can leave the fields empty for no start / end date limit)"
     },
     {
+        "id": "joining_dropdown",
+        "type": "dropdown",
+        "name": "Join entries by:",
+        "values": [
+            {
+                "-":"All"
+            },
+            {
+                "category_id": "Category"
+            },
+            {
+                "project_id": "Project"
+            },
+            {
+                "task_id": "Task"
+            },
+            {
+                "subtask_id": "Subtask"
+            }
+        ],
+        "persist": true
+    },
+    {
         "id": "dates_apply_button",
         "type": "button",
         "name": "Apply All",
         "value": "",
-        "actionFunction": "tymeThing.readForm()"
+        "actionFunction": "tymeThing.exportEntries()"
+    },
+    {
+        "id": "separator2",
+        "type": "separator",
+        "name": ""
     }
 ]

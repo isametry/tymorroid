@@ -1,3 +1,10 @@
+const tyme_id_hierarchy = [
+    ["category", "category_id"],
+    ["project", "project_id"],
+    ["task", "task_id"],
+    ["subtask", "subtask_id"]
+];
+
 function htmlColor(string, color) {
     return `<span style=\"color: ${color}\">${string}</span>`;
 }
@@ -19,21 +26,26 @@ class TymorroidBridge {
     }
 
     getPreview() {
-        this.tyme_object.importEntries();
-
         let output = "";
-    
+
         // Debug info:
         output += `<tt>${this.tyme_object.debug_info_dates.join("<br>")}</tt>`;
-    
+
         // INVOICE PREVIEW:
         output += "<div style=\"border: 1px solid; padding: 6px\">";
         for (let i = 0; i < this.tyme_object.time_entries.length; i++) {
             output += `<br>${minsToHoursString(this.tyme_object.time_entries[i]["duration"])} | ${this.tyme_object.time_entries[i]["task"]}`;
         }
-    
+
         output += `<br><strong>Total: ${minsToHoursString(this.tyme_object.getTotalDuration())}</strong>`
-    
+        for (const line of this.tyme_object.invoice_entries) {
+            output += "<br>";
+            for (const label of tyme_id_hierarchy) {
+                output += line.tyme_labels[label[0]] + " > ";
+            }
+            output += line.quantity;
+        }
+
         return output;
     }
 }
@@ -49,8 +61,8 @@ class FakturoidStuff {
     constructor() {
         this.login_status = {
             successful: false,
-            tldr: "Warning",
-            message: "Fakturoid connection status unknown"
+            message: "Warning",
+            detail: "Fakturoid connection status unknown"
         };
     }
 
@@ -83,29 +95,77 @@ class FakturoidStuff {
             const response = utils.request(`https://app.fakturoid.cz/api/v2/accounts/${this.login_slug}/account.json`, "GET", this.headers);
             const ok = /2\d\d/;
             if (!ok.test(response.result)) {
-                this.login_status.tldr = "Error"
-                this.login_status.message = `Fakturoid connection: HTML error ${response.statusCode}`;
+                this.login_status.message = "Error"
+                this.login_status.detail = `Fakturoid connection: HTML error ${response.statusCode}`;
             }
             this.login_status.successful = true;
             this.account_data = JSON.parse(response.result);
-            this.login_status.tldr = "Success!"
-            this.login_status.message = `Fakturoid connection successful as ${this.account_data.name}`;
+            this.login_status.message = "Success!"
+            this.login_status.detail = `Fakturoid connection successful as ${this.account_data.name}`;
 
         } catch (error) {
-            this.login_status.tldr = "Error";
-            this.login_status["message"] = `Fakturoid connection error (${error})`;
+            this.login_status.message = "Error";
+            this.login_status["detail"] = `Fakturoid connection error (${error})`;
         }
-        tyme.showAlert(this.login_status.tldr, this.login_status.message);
+        tyme.showAlert(this.login_status.message, this.login_status.detail);
     }
 }
 
-class InvoiceLine {
-    // "id": 1234,
-    // "name": "PC",
-    // "quantity": "1.0",
-    // "unit_name": "",
-    // "unit_price": "20000.0",
-    // "vat_rate": 21
+class InvoiceItem {
+    quantity;
+    unit_name;
+    unit_price;
+    vat_rate;
+
+    tyme_labels = {};
+    tyme_IDs = {};
+
+    constructor(time_entry) {
+        this.name = time_entry.name;
+        this.quantity = time_entry.duration;
+        this.unit_name = time_entry.duration_unit;
+        this.unit_price = time_entry.rate;
+        this.currency = time_entry.rate_unit;
+        this.vat_rate = 0; // #TODO
+
+        this.tyme_IDs["category_id"] = time_entry.category_id;
+        this.tyme_IDs["project_id"] = time_entry.project_id;
+        this.tyme_IDs["task_id"] = time_entry.task_id;
+        this.tyme_IDs["subtask_id"] = time_entry.subtask_id;
+
+        this.tyme_labels["category"] = time_entry.category;
+        this.tyme_labels["project"] = time_entry.project;
+        this.tyme_labels["task"] = time_entry.task;
+        this.tyme_labels["subtask"] = time_entry.subtask;
+    }
+
+    addEntry(joinee, joining_id_type) {
+        if (
+            this.unit_name === joinee.duration_unit &&
+            this.unit_price === joinee.rate &&
+            this.currency === joinee.rate_unit
+        ) {
+            this.quantity += joinee.duration;
+
+            let common_id_passed = false;
+            for (const id of tyme_id_hierarchy) {
+                if (!common_id_passed) {
+                    this.tyme_IDs[id[1]] = joinee[id[1]];
+                    this.tyme_labels[id[0]] = joinee[id[0]];
+                } else {
+                    this.tyme_IDs[id[1]] = "";
+                    this.tyme_labels[id[0]] = "";
+                }
+
+                if (id[0] === joining_id_type) {
+                    common_id_passed = true;
+                }
+            }
+            return true;
+        } else {
+            return false;
+        }
+    }
 }
 
 class TymeStuff {
@@ -118,7 +178,7 @@ class TymeStuff {
 
     constructor() {
         this.debug_info_dates = ["", ""];
-        this.importEntries();
+        this.exportEntries();
     }
 
     readForm() {
@@ -182,20 +242,50 @@ class TymeStuff {
         return sum;
     }
 
-    exportEntries(join_mode) {
-        let output = [];
+    exportEntries() {
+        const merging_property = formValue.joining_dropdown;
+        this.importEntries();
 
-        // for (let i = 0; i < this.time_entries; i++) {
-        //     switch (join_mode) {
-        //         case "projects":
-        //             output
-        //         default:
-        //             break;
-        //     }
-        // }
+        let merged_items = [];
+
+        for (const time_entry of this.time_entries) {
+            let search_property;
+
+            // filter the joining method to only valid time time_entry IDs.
+            // if parameter is something else, search_property remains empty and no joining is done.
+            if (
+                merging_property === "category_id" ||
+                merging_property === "project_id" ||
+                merging_property === "task_id" ||
+                merging_property === "subtask_id"
+            ) {
+                search_property = merging_property;
+
+            }
+
+            let index_to_merge;
+
+            // find existing invoice entry to merge with:
+
+            for (let i = 0; i < merged_items.length; i++) {
+                if (time_entry[search_property] === merged_items[i].tyme_IDs[search_property]) {
+                    index_to_merge = i;
+                    utils.log("tymorroid: index_to_merge: " + index_to_merge);
+                }
+            }
+
+            if (!isNaN(index_to_merge)) {
+                merged_items[index_to_merge].addEntry(time_entry, search_property);
+            } else {
+                merged_items.push(new InvoiceItem(time_entry));
+            }
+        }
+
+        this.invoice_entries = merged_items;
     }
 }
 
 const tymeThing = new TymeStuff();
+tymeThing.exportEntries();
 const fakturoidThing = new FakturoidStuff();
 const mainThing = new TymorroidBridge(tymeThing, fakturoidThing);
