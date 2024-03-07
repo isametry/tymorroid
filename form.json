@@ -44,6 +44,12 @@
         "name": ""
     },
     {
+        "id": "tyme_things",
+        "type": "hint",
+        "name": "",
+        "value": "Filter time entries:"
+    },
+    {
         "id": "tyme_tasks",
         "type": "tasks",
         "name": ""
@@ -66,41 +72,62 @@
         "id": "date_hint",
         "type": "hint",
         "name": "",
-        "value": "(you can leave the fields empty for no start / end date limit)"
-    },
-    {
-        "id": "joining_dropdown",
-        "type": "dropdown",
-        "name": "Join entries by:",
-        "values": [
-            {
-                "-":"All"
-            },
-            {
-                "category_id": "Category"
-            },
-            {
-                "project_id": "Project"
-            },
-            {
-                "task_id": "Task"
-            },
-            {
-                "subtask_id": "Subtask"
-            }
-        ],
-        "persist": true
-    },
-    {
-        "id": "dates_apply_button",
-        "type": "button",
-        "name": "Apply All",
-        "value": "",
-        "actionFunction": "tymeThing.exportEntries()"
+        "value": "(Leave a field empty for no start / end date limit)"
     },
     {
         "id": "separator2",
         "type": "separator",
         "name": ""
+    },
+    {
+        "id": "invoice_settings",
+        "type": "hint",
+        "name": "",
+        "value": "Invoice settings:"
+    },
+    {
+        "id": "joining_dropdown",
+        "type": "dropdown",
+        "name": "Group into:",
+        "values": [
+            {
+                "category": "Categories"
+            },
+            {
+                "project": "Projects"
+            },
+            {
+                "task": "Tasks"
+            },
+            {
+                "subtask": "Tasks & Subtasks"
+            }
+        ],
+        "persist": true
+    },
+    {
+        "id": "vat_rate",
+        "type": "text",
+        "name": "VAT rate (in whole %)",
+        "placeholder": "20",
+        "persist": true
+    },
+    {
+        "id": "separator2",
+        "type": "separator",
+        "name": ""
+    },
+    {
+        "id": "apply_all_button",
+        "type": "button",
+        "name": "Apply All",
+        "value": "",
+        "actionFunction": "mainThing.getPreview()"
+    },
+    {
+        "id": "apply_hint",
+        "type": "hint",
+        "name": "",
+        "value": "(In text fields, you can also press Return to apply)"
     }
 ]
