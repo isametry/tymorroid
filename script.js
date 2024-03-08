@@ -29,14 +29,14 @@ class GroupedTimeEntries {
 
     // group time entries based on a given property, so that they can be merged into a single invoice item.
     // apart from the property (id) being identical, entries also need to have the same currency and hourly rate.
-    // groupable items are put in arrays, this.#list keeps a master array of the group arrays.
+    // groupable items are put in arrays, this.list keeps a master array of the group arrays.
 
     grouping_id_type;
-    #list;
+    list;
 
     constructor(grouping_type, entries = []) {
         this.grouping_id_type = TYME_ID_HIERARCHY[grouping_type]; // "category_id" / "project_id" / "task_id" / "subtask_id" / "id"
-        this.#list = [];
+        this.list = [];
 
         for (const entry of entries) {
             this.addEntry(entry);
@@ -51,8 +51,8 @@ class GroupedTimeEntries {
         // ENTRY ID LOOKUP:
 
         if (curr_id) { // if exists and isn't ""
-            for (let i = 0; i < this.#list.length; i++) {
-                if (this.#list[i][0][this.grouping_id_type] == curr_id) {
+            for (let i = 0; i < this.list.length; i++) {
+                if (this.list[i][0][this.grouping_id_type] == curr_id) {
                     found_index = i;
                     break;
                 }
@@ -61,10 +61,10 @@ class GroupedTimeEntries {
 
         // ENTRY COMPATIBILITY CHECKING:
 
-        if (found_index != null && // a matching id is found on the #list…
-            entry.duration_unit === this.#list[found_index][0].duration_unit &&
-            entry.rate === this.#list[found_index][0].rate &&
-            entry.rate_unit === this.#list[found_index][0].rate_unit // …and the two entries are actually comparable
+        if (found_index != null && // a matching id is found on the list…
+            entry.duration_unit === this.list[found_index][0].duration_unit &&
+            entry.rate === this.list[found_index][0].rate &&
+            entry.rate_unit === this.list[found_index][0].rate_unit // …and the two entries are actually comparable
         ) {
             is_groupable = true;
         }
@@ -72,11 +72,11 @@ class GroupedTimeEntries {
         // ENTRY HANDLING:
 
         if (is_groupable) {
-            this.#list[found_index].push(entry);
+            this.list[found_index].push(entry);
             return;
         } else {
             const addition = new Array(entry);
-            this.#list.push(addition);
+            this.list.push(addition);
             return;
         }
     }
@@ -88,19 +88,7 @@ class GroupedTimeEntries {
     }
 
     getEntriesInArrays() {
-        return this.#list;
-    }
-
-    getEntriesFlat() {
-        const output = [];
-
-        for (group of this.#list) {
-            for (item of group) {
-                output.push(item);
-            }
-        }
-
-        return output;
+        return this.list;
     }
 }
 
@@ -110,11 +98,11 @@ class FakturoidInvoiceItem {
     unit_name;
     unit_price;
     vat_rate;
-    #grouping_type;
+    grouping_type;
 
     constructor(input, vat_rate, grouping_type) {
         this.vat_rate = vat_rate;
-        this.#grouping_type = grouping_type;
+        this.grouping_type = grouping_type;
 
         if (!(input instanceof Array)) {
             input = new Array(input);
@@ -129,8 +117,8 @@ class FakturoidInvoiceItem {
         this.unit_name = first_entry.duration_unit;
         this.unit_price = first_entry.rate;
         this.currency = first_entry.rate_unit;
-        
-        const current_lvl = TYME_DATA_HIERARCHY.indexOf(this.#grouping_type);
+
+        const current_lvl = TYME_DATA_HIERARCHY.indexOf(this.grouping_type);
         if (current_lvl === -1) {
             current_lvl = TYME_DATA_HIERARCHY.length - 1;
         }
@@ -152,12 +140,12 @@ class FakturoidInvoiceItem {
 }
 
 class TymeStuff {
-    #time_entries;
-    #grouping_id_type;
+    time_entries;
+    grouping_id_type;
 
     start_date;
     end_date;
-    #task_selection;
+    task_selection;
     debug_info;
 
     constructor() {
@@ -175,37 +163,37 @@ class TymeStuff {
         this.start_date = this.evaluateDateString(formValue.start_date, true);
         this.end_date = this.evaluateDateString(formValue.end_date, false);
 
-        this.#task_selection = formValue.tyme_tasks;
-        this.#grouping_id_type = formValue.joining_dropdown;
+        this.task_selection = formValue.tyme_tasks;
+        this.grouping_id_type = formValue.joining_dropdown;
     }
 
     importEntries() {
-        this.#time_entries = tyme.timeEntries(
+        this.time_entries = tyme.timeEntries(
             this.start_date,
             this.end_date,
-            this.#task_selection,
+            this.task_selection,
             null, // no limit
             0, // => un-billed
             true // => billable
         );
     }
 
-    getTotalDuration() { // DEPRECATED
+    getTotalDuration() {
         let sum = 0;
 
-        for (let i = 0; i < this.#time_entries.length; i++) {
-            sum += this.#time_entries[i]["duration"];
+        for (let i = 0; i < this.time_entries.length; i++) {
+            sum += this.time_entries[i]["duration"];
         }
 
         return sum;
     }
 
     getGroupingIDType() {
-        return this.#grouping_id_type;
+        return this.grouping_id_type;
     }
 
     getTimeEntries() {
-        return this.#time_entries;
+        return this.time_entries;
     }
 
     evaluateDateString(input_date_string, is_start) {
@@ -248,68 +236,110 @@ class FakturoidStuff {
     login_email;
     login_key;
     headers;
-    login_status;
+    network_status;
     account_data;
     vat_rate;
+    client_list;
 
     constructor() {
-        this.login_status = {
-            successful: false,
-            message: "Warning",
-            detail: "Fakturoid connection status unknown"
+        this.network_status = {
+            login_successful: false,
+            login_message: "Warning",
+            login_detail: "Fakturoid connection status unknown",
+            clients_successful: false
         };
     }
 
     readForm() {
-        const input_URL = formValue.login_URL;
-        let slug_candidate;
-        const prefix = "app.fakturoid.cz/"
+        try {
+            const input_URL = formValue.login_URL;
+            let slug_candidate;
+            const prefix = "app.fakturoid.cz/"
 
-        // extract the "slug" (username) from the URL
-        // (and avoiding regex at all costs, lol):
+            // extract the "slug" (username) from the URL
+            // (and avoiding regex at all costs, lol):
 
-        slug_candidate = input_URL.slice((input_URL.indexOf(prefix) + prefix.length))
-        slug_candidate = slug_candidate.slice(0, slug_candidate.indexOf("/"));
+            slug_candidate = input_URL.slice((input_URL.indexOf(prefix) + prefix.length))
+            slug_candidate = slug_candidate.slice(0, slug_candidate.indexOf("/"));
 
-        this.login_slug = slug_candidate;
-        this.login_email = formValue.login_email;
-        this.login_key = formValue.login_key;
+            this.login_slug = slug_candidate;
+            this.login_email = formValue.login_email;
+            this.login_key = formValue.login_key;
 
+            this.headers = {
+                "Authorization": `Basic ${utils.base64Encode(`${this.login_email}:${this.login_key}`)}`,
+                "User-Agent": "Fakturoid Exporter for Tyme (max@akrman.com)",
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
 
-        if (!isNaN(formValue.vat_rate)) {
-            this.vat_rate = formValue.vat_rate;
-        } else {
-            this.vat_rate = 0;
+            if (!isNaN(formValue.vat_rate)) {
+                this.vat_rate = formValue.vat_rate;
+            } else {
+                this.vat_rate = 0;
+            }
+
+        } catch (error) {
+            tyme.showAlert("Error", "Could not launch plugin GUI");
         }
-
     }
 
     login() {
         this.readForm();
-        this.headers = {
-            "Authorization": `Basic ${utils.base64Encode(`${this.login_email}:${this.login_key}`)}`,
-            "User-Agent": "Fakturoid Exporter for Tyme (max@akrman.com)",
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
 
         try {
             const response = utils.request(`https://app.fakturoid.cz/api/v2/accounts/${this.login_slug}/account.json`, "GET", this.headers);
-            const ok = /2\d\d/;
-            if (!ok.test(response.result)) {
-                this.login_status.message = "Error"
-                this.login_status.detail = `Fakturoid connection: HTML error ${response.statusCode}`;
+            const ok_regex = /2\d\d/;
+            if (ok_regex.test(response.statusCode)) {
+                this.network_status.login_successful = true;
+                this.account_data = JSON.parse(response.result);
+                this.network_status.login_message = "Success!"
+                this.network_status.login_detail = `Fakturoid connection successful as ${this.account_data.name}`;
+            } else {
+                this.network_status.login_message = "Error"
+                this.network_status.login_detail = `Fakturoid connection: HTML error ${response.statusCode}`;
             }
-            this.login_status.successful = true;
-            this.account_data = JSON.parse(response.result);
-            this.login_status.message = "Success!"
-            this.login_status.detail = `Fakturoid connection successful as ${this.account_data.name}`;
 
         } catch (error) {
-            this.login_status.message = "Error";
-            this.login_status["detail"] = `Fakturoid connection error (${error})`;
+            this.network_status.login_message = "Error";
+            this.network_status.login_detail = `Fakturoid connection error (${error})`;
         }
-        tyme.showAlert(this.login_status.message, this.login_status.detail);
+        tyme.showAlert(this.network_status.login_message, this.network_status.login_detail);
+    }
+
+    importClients() {
+        this.readForm();
+
+        try {
+            const response = utils.request(`https://app.fakturoid.cz/api/v2/accounts/${this.login_slug}/subjects.json`, "GET", this.headers);
+            const ok_regex = /2\d\d/;
+            utils.log("tymorroid contacts list: " + response.statusCode);
+            if (ok_regex.test(response.statusCode)) {
+                this.network_status.clients_successful = true;
+                this.client_list = JSON.parse(response.result);
+            } else {
+                this.network_status.clients_successful = false;
+            }
+        } catch (error) {
+            this.network_status.clients_successful = false;
+        }
+    }
+
+    getClientList() {
+        this.importClients();
+        if (this.network_status.clients_successful) {
+            const dropdown_items = [];
+            for (const client of this.client_list) {
+                const next_item = {
+                    "name": ("" + client["name"]),
+                    "value": ("" + client["id"])
+                };
+                dropdown_items.push(next_item);
+            }
+            return dropdown_items;
+        } else {
+            return [{ "name": "Error: no clients available!", "value": "" }];
+        }
     }
 }
 
@@ -317,7 +347,7 @@ class TymorroidBridge {
     tyme_object;
     fakturoid_object;
 
-    #grouped_entries;
+    grouped_entries;
     invoice_items;
 
     constructor(tymeObject, fakturoidObject) {
@@ -328,9 +358,9 @@ class TymorroidBridge {
     generateInvoiceItems() {
         this.tyme_object.refresh();
         this.fakturoid_object.readForm()
-        this.#grouped_entries = new GroupedTimeEntries(this.tyme_object.getGroupingIDType(), this.tyme_object.getTimeEntries());
+        this.grouped_entries = new GroupedTimeEntries(this.tyme_object.getGroupingIDType(), this.tyme_object.getTimeEntries());
         this.invoice_items = [];
-        for (const group of this.#grouped_entries.getEntriesInArrays()) {
+        for (const group of this.grouped_entries.getEntriesInArrays()) {
             this.invoice_items.push(new FakturoidInvoiceItem(group, this.fakturoid_object.vat_rate, this.tyme_object.getGroupingIDType()));
         }
     }
@@ -340,7 +370,8 @@ class TymorroidBridge {
         let output = "";
 
         // Debug info:
-        output += `<tt>${this.tyme_object.debug_info.join("<br>")}></tt>`;
+        output += `<tt>${this.tyme_object.debug_info.join("<br>")}<br>
+        Client: ${formValue.clients_dropdown}</tt>`;
 
         // INVOICE PREVIEW:
         output += "<div style=\"border: 1px solid; padding: 6px\">";

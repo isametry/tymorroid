@@ -44,12 +44,6 @@
         "name": ""
     },
     {
-        "id": "tyme_things",
-        "type": "hint",
-        "name": "",
-        "value": "Filter time entries:"
-    },
-    {
         "id": "tyme_tasks",
         "type": "tasks",
         "name": ""
@@ -67,12 +61,6 @@
         "name": "End date",
         "placeholder": "2099-12-31",
         "persist": true
-    },
-    {
-        "id": "date_hint",
-        "type": "hint",
-        "name": "",
-        "value": "(Leave a field empty for no start / end date limit)"
     },
     {
         "id": "separator2",
@@ -129,5 +117,19 @@
         "type": "hint",
         "name": "",
         "value": "(In text fields, you can also press Return to apply)"
+    },
+    {
+        "id": "separator3",
+        "type": "separator",
+        "name": ""
+    },
+    {
+        "id": "clients_dropdown",
+        "type":"dropdown",
+        "name": "Fakturoid clients",
+        "valueFunction": "fakturoidThing.getClientList()",
+        "valueFunctionReloadable": true,
+        "persist": true
+
     }
 ]
