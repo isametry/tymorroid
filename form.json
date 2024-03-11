@@ -94,10 +94,61 @@
         "persist": true
     },
     {
+        "id": "round_places",
+        "type": "dropdown",
+        "name": "Rounding",
+        "values": [
+            {
+                "-1": "None"
+            },
+            {
+                "0": "Whole hours"
+            },
+            {
+                "1": "1 decimal place"
+            },
+            {
+                "2": "2 decimal places"
+            },
+            {
+                "3": "3 decimal places"
+            },
+            {
+                "4": "4 decimal places"
+            }
+        ],
+        "persist": true
+    },
+    {
+        "id": "round_method",
+        "type": "dropdown",
+        "name": "Rounding method",
+        "values": [
+            {
+                "0": "Normal (nearest)"
+            },
+            {
+                "1": "Up"
+            },
+            {
+                "-1": "Down"
+            }
+        ],
+        "persist": true
+    },
+    {
         "id": "vat_rate",
-        "type": "text",
+        "type": "number",
         "name": "VAT rate (in whole %)",
-        "placeholder": "20",
+        "placeholder": "0",
+        "persist": true
+    },
+    {
+        "id": "clients_dropdown",
+        "type": "dropdown",
+        "name": "Client",
+        "valueFunction": "fakturoidThing.getClientList()",
+        "valueFunctionReloadable": true,
         "persist": true
     },
     {
@@ -117,19 +168,5 @@
         "type": "hint",
         "name": "",
         "value": "(In text fields, you can also press Return to apply)"
-    },
-    {
-        "id": "separator3",
-        "type": "separator",
-        "name": ""
-    },
-    {
-        "id": "clients_dropdown",
-        "type":"dropdown",
-        "name": "Fakturoid clients",
-        "valueFunction": "fakturoidThing.getClientList()",
-        "valueFunctionReloadable": true,
-        "persist": true
-
     }
 ]
