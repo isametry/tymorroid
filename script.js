@@ -179,6 +179,7 @@ class TymeStuff {
 
     constructor() {
         this.debug_info = [];
+        this.time_entries = [];
         this.readForm();
         this.importEntries();
     }
@@ -215,38 +216,25 @@ class TymeStuff {
         return this.time_entries;
     }
 
-    evaluateDateString(input_date_string, is_start) {
-        // Evaluate string as a date:
-        // -   if the string is a valid date YYYY-MM-DD, convert it and use it.
-        // -   otherwise, throw a super early / super late date (depending on is_start).
+    getTotalDuration() {
+        let output = 0;
+        for (const entry of this.time_entries) {
+            output += entry.duration;
+        }
+        return output;
+    }
 
-        // Additionally, describe the result in .debug_info
-        // This is the only purpose of the inner if--else statements. Otherwise, they are not needed.
+    evaluateDateString(input_date_string, is_start) {
+        //  if the string is a valid date YYYY-MM-DD, convert it and use it.
+        //  otherwise, return a super early / super late date (depending on is_start).
 
         const interpreted_date = new Date(input_date_string);
         if (isFinite(interpreted_date)) {
-            if (is_start) { // for information only
-                this.debug_info[0] = htmlColor(`Start date: ${interpreted_date.toDateString()}</span>`, "green");
-            } else {
-                this.debug_info[1] = htmlColor(`End date: ${interpreted_date.toDateString()}</span>`, "green");
-            }
             return interpreted_date;
-
         } else if (is_start) {
-            if (input_date_string === "") { // for information only
-                this.debug_info[0] = htmlColor("Start date: None </span>", "green");
-            } else {
-                this.debug_info[0] = htmlColor(`Start date: Ignored \"${input_date_string}\". Use valid date in YYYY-MM-DD.</span>`, "orange");
-            }
             return new Date("1971-01-02");
-        } else {
-            if (input_date_string === "") { // for information only
-                this.debug_info[1] = htmlColor("End date: None </span>", "green");
-            } else {
-                this.debug_info[1] = htmlColor(`End date: Ignored \"${input_date_string}\". Use valid date in YYYY-MM-DD.</span>`, "orange");
-            }
-            return new Date("2099-12-31");
         }
+        return new Date("2099-12-31");
     }
 }
 
@@ -411,36 +399,70 @@ class TymorroidBridge {
 
     getPreview() {
         this.generateInvoiceItems();
-        let output = "";
-
-        // Debug info:
-        output += `<tt>${this.tyme_obj.debug_info.join("<br>")}<br>
-        Rounding places: ${this.fakt_obj.round_places}<br>
-        Rounding method: ${this.fakt_obj.round_method}</tt>`;
 
         // INVOICE PREVIEW:
-        output += "<div style=\"border: 1px solid; padding: 6px\">";
-        
-        const total = {
+
+        let html_invoice_table = "<h2>Invoice Preview</h2><div style=\"border: 1px solid; padding: 6px\"><table style=\"border: 0pt\">";
+
+        html_invoice_table += 
+        `<thead>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td>Per Unit</td>
+                <td>Total</td>
+            </tr>
+        </thead>`;
+
+        let total = {
             quantity: 0,
             unit_name: this.invoice_items[0].unit_name,
             price: 0,
-            currency: this.invoice_items[0].currency,
+            currency: this.invoice_items[0].currency
         }
 
+        html_invoice_table += "<tbody>";
         for (const item of this.invoice_items) {
-            output += `<br>${item.quantity} ${item.unit_name} | ${item.name} … ${item.unit_price * item.quantity} ${item.currency}`;
-            total.quantity += item.quantity;
-            total.price += (item.unit_price * item.quantity);
+            html_invoice_table +=
+                `<tr>
+                    <td>${item.quantity}</td>
+                    <td>${item.unit_name}</td>
+                    <td>${item.name}</td>
+                    <td>${item.unit_price} ${item.currency}</td>
+                    <td>${item.unit_price * item.quantity} ${item.currency}</td>
+                </tr>`;
+
+            if (item.unit_name == total.unit_name) {
+                total.quantity += item.quantity;
+            }
+            total.price += item.unit_price * item.quantity;
         }
+        html_invoice_table += "</tbody>";
 
-        output += `<br><strong>Total: ${Math.round(total.quantity*1000000)/1000000} ${total.unit_name} … ${total.price} ${total.currency}</strong>`;
-        output += `<br>VAT rate: ${this.fakt_obj.vat_rate}`;
+        html_invoice_table += 
+            `<tfoot>
+                <tr style="font-weight: bold; border-top: 2pt solid">
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td>${total.price} ${total.currency}</td>
+                </tr>
+            </tfoot>`;
 
-        output += `</div>`
+        html_invoice_table += "</table></div>";
 
+        const html_debug =
+        `<h2>Tyme Info</h2>
+        <tt>
+            Start date: ${this.tyme_obj.start_date.toDateString()}<br>
+            End date: ${this.tyme_obj.end_date.toDateString()}<br>
+            Real total duration: ${minsToHourFloat(this.tyme_obj.getTotalDuration(), this.fakt_obj.round_places)} h (${minsToHoursString(this.tyme_obj.getTotalDuration())})<br>
+            Invoice total duration: ${Math.round(total.quantity*1000000)/1000000} ${total.unit_name}<br>
+        </tt>`;
 
-        return output;
+        return html_debug + html_invoice_table;
     }
 }
 
