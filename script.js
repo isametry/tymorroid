@@ -180,13 +180,6 @@ class TymeStuff {
     constructor() {
         this.debug_info = [];
         this.time_entries = [];
-        this.readForm();
-        this.importEntries();
-    }
-
-    refresh() {
-        this.readForm();
-        this.importEntries();
     }
 
     readForm() {
@@ -198,6 +191,7 @@ class TymeStuff {
     }
 
     importEntries() {
+        this.readForm();
         this.time_entries = tyme.timeEntries(
             this.start_date,
             this.end_date,
@@ -216,14 +210,6 @@ class TymeStuff {
         return this.time_entries;
     }
 
-    getTotalDuration() {
-        let output = 0;
-        for (const entry of this.time_entries) {
-            output += entry.duration;
-        }
-        return output;
-    }
-
     evaluateDateString(input_date_string, is_start) {
         //  if the string is a valid date YYYY-MM-DD, convert it and use it.
         //  otherwise, return a super early / super late date (depending on is_start).
@@ -240,11 +226,11 @@ class TymeStuff {
 
 class FakturoidStuff {
     credentials;
-
     headers;
     network_status;
+
     account_data;
-    vat_rate;
+    form_vat_rate;
     client_list;
 
     round_places;
@@ -288,11 +274,13 @@ class FakturoidStuff {
                 "Accept": "application/json"
             }
 
-            if (!isNaN(formValue.vat_rate)) {
-                this.vat_rate = formValue.vat_rate;
-            } else {
-                this.vat_rate = 0;
-            }
+            //const vat_rate_candidate = parseInt(formValue.vat_rate);
+
+            //if (!isNaN(vat_rate_candidate)) {
+            this.form_vat_rate = formValue.vat_rate;
+            //} else {
+            //    this.form_vat_rate = 0;
+            //}
 
             this.round_places = parseInt(formValue.round_places);
             this.round_method = parseInt(formValue.round_method);
@@ -342,7 +330,6 @@ class FakturoidStuff {
     }
 
     getClientList() {
-        this.importClients();
         if (this.network_status.clients_successful) {
             const dropdown_items = [];
             for (const client of this.client_list) {
@@ -373,7 +360,7 @@ class TymorroidBridge {
     }
 
     generateInvoiceItems() {
-        this.tyme_obj.refresh();
+        this.tyme_obj.importEntries();
         this.fakt_obj.readForm();
         this.grouped_entries = new GroupedTimeEntries(this.tyme_obj.getGroupingIDType(), this.tyme_obj.getTimeEntries());
 
@@ -383,7 +370,7 @@ class TymorroidBridge {
         for (const group of this.grouped_entries.getEntriesInArrays()) {
             const next_item = new FakturoidInvoiceItem(
                 group,
-                this.fakt_obj.vat_rate,
+                this.fakt_obj.form_vat_rate,
                 this.tyme_obj.getGroupingIDType(),
                 formValue.round_places,
                 formValue.round_method
@@ -397,15 +384,21 @@ class TymorroidBridge {
         }
     }
 
+    getTotalDuration() {
+        let output = 0;
+        for (const entry of this.tyme_obj.time_entries) {
+            output += entry.duration;
+        }
+        return output;
+    }
+
     getPreview() {
         this.generateInvoiceItems();
 
         // INVOICE PREVIEW:
 
-        let html_invoice_table = "<h2>Invoice Preview</h2><div style=\"border: 1px solid; padding: 6px\"><table style=\"border: 0pt\">";
-
-        html_invoice_table += 
-        `<thead>
+        let html_invoice_items = `<table style=\"border: none\">
+        <thead>
             <tr>
                 <td></td>
                 <td></td>
@@ -422,15 +415,15 @@ class TymorroidBridge {
             currency: this.invoice_items[0].currency
         }
 
-        html_invoice_table += "<tbody>";
+        html_invoice_items += "<tbody>";
         for (const item of this.invoice_items) {
-            html_invoice_table +=
+            html_invoice_items +=
                 `<tr>
                     <td>${item.quantity}</td>
                     <td>${item.unit_name}</td>
                     <td>${item.name}</td>
                     <td>${item.unit_price} ${item.currency}</td>
-                    <td>${item.unit_price * item.quantity} ${item.currency}</td>
+                    <td>${Math.round(item.unit_price * item.quantity*1000000)/1000000} ${item.currency}</td>
                 </tr>`;
 
             if (item.unit_name == total.unit_name) {
@@ -438,35 +431,60 @@ class TymorroidBridge {
             }
             total.price += item.unit_price * item.quantity;
         }
-        html_invoice_table += "</tbody>";
-
-        html_invoice_table += 
-            `<tfoot>
-                <tr style="font-weight: bold; border-top: 2pt solid">
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td>${total.price} ${total.currency}</td>
+        html_invoice_items +=
+                `<tr>
+                    <td colspan="100%"></td>
                 </tr>
-            </tfoot>`;
+            </tbody>`;
 
-        html_invoice_table += "</table></div>";
+        let html_invoice_total = `<tfoot style="font-weight: bold;">`;
+
+        if (this.fakt_obj.form_vat_rate > 0) {
+            total.vat_amount = total.price * (this.fakt_obj.form_vat_rate / 100);
+            total.price_incl_vat = total.price + total.vat_amount;
+
+            html_invoice_total +=
+                `<tr>
+                    <td colspan="4">Total without VAT</td>
+                    <td>${Math.round(total.price*1000000)/1000000} ${total.currency}</td>
+                </tr>
+                <tr>
+                    <td colspan="4">VAT ${this.fakt_obj.form_vat_rate}%</td>
+                    <td>${Math.round(total.vat_amount*1000000)/1000000} ${total.currency}</td>
+                </tr>
+                <tr>
+                    <td colspan="4"></td>
+                    <td>${Math.round(total.price_incl_vat*1000000)/1000000} ${total.currency}</td>
+                </tr>`
+        } else {
+            html_invoice_total +=
+                `<tr>
+                    <td colspan="4">Total</td>
+                    <td>${total.price} ${total.currency}</td>
+                </tr>`
+        }
+
+        html_invoice_total += "</tfoot>";
+
+        let html_invoice = 
+        "<h2>Invoice Preview</h2><div style=\"border: 1px solid; padding: 6px\">" 
+        + html_invoice_items 
+        + html_invoice_total
+        + "</div>";
 
         const html_debug =
-        `<h2>Tyme Info</h2>
+            `<h2>Tyme Info</h2>
         <tt>
             Start date: ${this.tyme_obj.start_date.toDateString()}<br>
             End date: ${this.tyme_obj.end_date.toDateString()}<br>
-            Real total duration: ${minsToHourFloat(this.tyme_obj.getTotalDuration(), this.fakt_obj.round_places)} h (${minsToHoursString(this.tyme_obj.getTotalDuration())})<br>
-            Invoice total duration: ${Math.round(total.quantity*1000000)/1000000} ${total.unit_name}<br>
+            Real total duration: ${minsToHourFloat(this.getTotalDuration(), this.fakt_obj.round_places)} h (${minsToHoursString(this.getTotalDuration())})<br>
+            Invoice total duration: ${Math.round(total.quantity * 1000000) / 1000000} ${total.unit_name}<br>
         </tt>`;
 
-        return html_debug + html_invoice_table;
+        return html_debug + html_invoice;
     }
 }
 
 const tymeThing = new TymeStuff();
-tymeThing.refresh();
 const fakturoidThing = new FakturoidStuff();
 const mainThing = new TymorroidBridge(tymeThing, fakturoidThing);

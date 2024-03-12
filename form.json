@@ -68,12 +68,6 @@
         "name": ""
     },
     {
-        "id": "invoice_settings",
-        "type": "hint",
-        "name": "",
-        "value": "Invoice settings:"
-    },
-    {
         "id": "joining_dropdown",
         "type": "dropdown",
         "name": "Group into:",
