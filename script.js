@@ -52,7 +52,7 @@ class GroupedTimeEntries {
     grouping_id_type;
     list;
 
-    constructor(grouping_type, entries = []) {
+    constructor(entries = [], grouping_type) {
         this.grouping_id_type = TYME_ID_HIERARCHY[grouping_type]; // "category_id" / "project_id" / "task_id" / "subtask_id" / "id"
         this.list = [];
 
@@ -111,6 +111,11 @@ class GroupedTimeEntries {
 }
 
 class FakturoidInvoiceItem {
+
+    // Created from one or multiple time entries, objects of this class can be passed to Fakturoid as invoice lines.
+    // With multiple entries, we assume the entries are compatible (same rate, same units – this is handled by GroupedTimeEntries) and sum up their duration.
+    // Common data (name, rate and units) will be taken from the first entry received.
+
     name;
     quantity;
     currency;
@@ -118,43 +123,42 @@ class FakturoidInvoiceItem {
     unit_price;
     vat_rate;
 
-    #grouping_type;
-    #round_places;
-    #round_method;
-
-    constructor(input, vat_rate, grouping_type, round_places, round_method) {
-        this.vat_rate = vat_rate;
-        this.#grouping_type = grouping_type;
-        this.#round_places = round_places;
-        this.#round_method = round_method;
+    constructor(input, bridge) {
+        this.vat_rate = bridge.fakt_obj.form_vat_rate;
 
         // overloaded constructor. the invoice item is always created from an array of time entries.
-        // if only a single entry is received, it shall be put in a single-item array below:
+        // if only a single entry is received, it is placed in a single-item array.
+
+        let entries;
 
         if (!(input instanceof Array)) {
-            input = new Array(input);
+            entries = new Array(input);
+        } else {
+            entries = input;
         }
 
-        this.createFromEntries(input);
-
-    }
-
-    createFromEntries(entries) {
         const first_entry = entries[0];
         this.unit_name = "h";
         this.unit_price = first_entry.rate;
         this.currency = first_entry.rate_unit;
 
-        const current_lvl = TYME_DATA_HIERARCHY.indexOf(this.#grouping_type);
+        // NAMING:
+        // search for an applicable name from the time entry for the invoice line.
+
+        //   look no deeper than the grouping_id:
+
+        const current_lvl = TYME_DATA_HIERARCHY.indexOf(bridge.tyme_obj.grouping_type);
         if (current_lvl === -1) {
             current_lvl = TYME_DATA_HIERARCHY.length - 1;
         }
 
+        //   start at the deepest level (e.g. subtask), if the name is empty, jump out (e.g. task):
+
         for (let i = current_lvl; i >= 0; i--) {
-            if (this.name) {
+            if (first_entry[TYME_DATA_HIERARCHY[i]]) {
+                this.name = bridge.fakt_obj.item_prefix + first_entry[TYME_DATA_HIERARCHY[i]];
                 break;
             }
-            this.name = first_entry[TYME_DATA_HIERARCHY[i]];
         }
 
         let quantity_candidate = 0;
@@ -162,7 +166,12 @@ class FakturoidInvoiceItem {
             quantity_candidate += entry.duration;
         }
 
-        this.quantity = minsToHourFloat(quantity_candidate, this.#round_places, this.#round_method);
+        this.quantity = minsToHourFloat(
+            quantity_candidate,
+            bridge.fakt_obj.round_places,
+            bridge.fakt_obj.round_method
+        );
+
     }
 
     // no getter here. pass me directly to Fakturoid! 
@@ -170,11 +179,13 @@ class FakturoidInvoiceItem {
 
 class TymeStuff {
     time_entries;
-    grouping_id_type;
+    grouped_entries;
+    unbilled_only;
 
     start_date;
     end_date;
     task_selection;
+    grouping_type;
     debug_info;
 
     constructor() {
@@ -183,44 +194,47 @@ class TymeStuff {
     }
 
     readForm() {
-        this.start_date = this.evaluateDateString(formValue.start_date, true);
-        this.end_date = this.evaluateDateString(formValue.end_date, false);
+        // START DATE:
+        if (formValue.dates_enabled && isFinite(formValue.start_date)) {
+            this.start_date = formValue.start_date;
+        } else {
+            this.start_date = new Date("1970-01-02")
+        }
+
+        // END DATE:
+        if (formValue.dates_enabled && isFinite(formValue.end_date)) {
+            this.end_date = formValue.end_date;
+        } else {
+            this.end_date = new Date("2199-12-31");
+        }
 
         this.task_selection = formValue.tyme_tasks;
-        this.grouping_id_type = formValue.joining_dropdown;
+        this.grouping_type = formValue.joining_dropdown;
+        this.unbilled_only = formValue.unbilled_only_toggle;
     }
 
     importEntries() {
-        this.readForm();
         this.time_entries = tyme.timeEntries(
             this.start_date,
             this.end_date,
             this.task_selection,
             null, // no limit
-            0, // => un-billed
-            true // => billable
+            (this.unbilled_only) ? 0 : null,
+            true // => billable only
         );
     }
 
-    getGroupingIDType() {
-        return this.grouping_id_type;
+    processEntries() {
+        this.readForm();
+        this.importEntries();
+        this.grouped_entries = new GroupedTimeEntries(
+            this.time_entries,
+            this.grouping_type
+        );
     }
 
-    getTimeEntries() {
-        return this.time_entries;
-    }
-
-    evaluateDateString(input_date_string, is_start) {
-        //  if the string is a valid date YYYY-MM-DD, convert it and use it.
-        //  otherwise, return a super early / super late date (depending on is_start).
-
-        const interpreted_date = new Date(input_date_string);
-        if (isFinite(interpreted_date)) {
-            return interpreted_date;
-        } else if (is_start) {
-            return new Date("1971-01-02");
-        }
-        return new Date("2099-12-31");
+    getEntries() {
+        return this.grouped_entries.getEntriesInArrays();
     }
 }
 
@@ -235,6 +249,7 @@ class FakturoidStuff {
 
     round_places;
     round_method;
+    item_prefix;
 
     constructor() {
         this.network_status = {
@@ -252,42 +267,38 @@ class FakturoidStuff {
     }
 
     readForm() {
-        try {
-            const input_URL = formValue.login_URL;
-            let slug_candidate;
-            const prefix = "app.fakturoid.cz/"
+        const input_URL = formValue.login_URL;
+        let slug_candidate;
+        const URL_prefix = "app.fakturoid.cz/"
 
-            // extract the "slug" (username) from the URL
-            // (and avoiding regex at all costs, lol):
+        // extract the "slug" (username) from the URL
+        // (and avoiding regex at all costs, lol):
 
-            slug_candidate = input_URL.slice((input_URL.indexOf(prefix) + prefix.length))
-            slug_candidate = slug_candidate.slice(0, slug_candidate.indexOf("/"));
+        slug_candidate = input_URL.slice((input_URL.indexOf(URL_prefix) + URL_prefix.length))
+        slug_candidate = slug_candidate.slice(0, slug_candidate.indexOf("/"));
 
-            this.credentials.slug = slug_candidate;
-            this.credentials.email = formValue.login_email;
-            this.credentials.key = formValue.login_key;
+        this.credentials.slug = slug_candidate;
+        this.credentials.email = formValue.login_email;
+        this.credentials.key = formValue.login_key;
 
-            this.headers = {
-                "Authorization": `Basic ${utils.base64Encode(`${this.credentials.email}:${this.credentials.key}`)}`,
-                "User-Agent": "Fakturoid Exporter for Tyme (max@akrman.com)",
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
-
-            //const vat_rate_candidate = parseInt(formValue.vat_rate);
-
-            //if (!isNaN(vat_rate_candidate)) {
-            this.form_vat_rate = formValue.vat_rate;
-            //} else {
-            //    this.form_vat_rate = 0;
-            //}
-
-            this.round_places = parseInt(formValue.round_places);
-            this.round_method = parseInt(formValue.round_method);
-
-        } catch (error) {
-            tyme.showAlert("Error", "Could not launch plugin GUI");
+        this.headers = {
+            "Authorization": `Basic ${utils.base64Encode(`${this.credentials.email}:${this.credentials.key}`)}`,
+            "User-Agent": "Fakturoid Exporter for Tyme (max@akrman.com)",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
+
+        //const vat_rate_candidate = parseInt(formValue.vat_rate);
+
+        //if (!isNaN(vat_rate_candidate)) {
+        this.form_vat_rate = formValue.vat_rate;
+        //} else {
+        //    this.form_vat_rate = 0;
+        //}
+
+        this.round_places = parseInt(formValue.round_places);
+        this.round_method = parseInt(formValue.round_method);
+        this.item_prefix = formValue.item_prefix;
     }
 
     login() {
@@ -351,7 +362,6 @@ class TymorroidBridge {
     fakt_obj;
     currency;
 
-    grouped_entries;
     invoice_items;
 
     constructor(tymeObject, fakturoidObject) {
@@ -360,21 +370,19 @@ class TymorroidBridge {
     }
 
     generateInvoiceItems() {
-        this.tyme_obj.importEntries();
+        this.tyme_obj.processEntries();
         this.fakt_obj.readForm();
-        this.grouped_entries = new GroupedTimeEntries(this.tyme_obj.getGroupingIDType(), this.tyme_obj.getTimeEntries());
 
         this.invoice_items = [];
-        this.currency = this.tyme_obj.time_entries[0].rate_unit;
 
-        for (const group of this.grouped_entries.getEntriesInArrays()) {
-            const next_item = new FakturoidInvoiceItem(
-                group,
-                this.fakt_obj.form_vat_rate,
-                this.tyme_obj.getGroupingIDType(),
-                formValue.round_places,
-                formValue.round_method
-            );
+        try {
+            this.currency = this.tyme_obj.time_entries[0].rate_unit;
+        } catch (error) {
+            null
+        }
+
+        for (const group of this.tyme_obj.getEntries()) {
+            const next_item = new FakturoidInvoiceItem(group, this);
 
             if (this.currency != undefined && next_item.currency != this.currency) {
                 this.currency = undefined;
@@ -410,9 +418,10 @@ class TymorroidBridge {
 
         let total = {
             quantity: 0,
-            unit_name: this.invoice_items[0].unit_name,
             price: 0,
-            currency: this.invoice_items[0].currency
+            unit_name: (this.invoice_items.length > 0) ? this.invoice_items[0].unit_name : "",
+            currency: (this.invoice_items.length > 0) ? this.invoice_items[0].currency : "",
+
         }
 
         html_invoice_items += "<tbody>";
@@ -423,7 +432,7 @@ class TymorroidBridge {
                     <td>${item.unit_name}</td>
                     <td>${item.name}</td>
                     <td>${item.unit_price} ${item.currency}</td>
-                    <td>${Math.round(item.unit_price * item.quantity*1000000)/1000000} ${item.currency}</td>
+                    <td>${Math.round(item.unit_price * item.quantity * 1000000) / 1000000} ${item.currency}</td>
                 </tr>`;
 
             if (item.unit_name == total.unit_name) {
@@ -432,7 +441,7 @@ class TymorroidBridge {
             total.price += item.unit_price * item.quantity;
         }
         html_invoice_items +=
-                `<tr>
+            `<tr>
                     <td colspan="100%"></td>
                 </tr>
             </tbody>`;
@@ -446,15 +455,15 @@ class TymorroidBridge {
             html_invoice_total +=
                 `<tr>
                     <td colspan="4">Total without VAT</td>
-                    <td>${Math.round(total.price*1000000)/1000000} ${total.currency}</td>
+                    <td>${Math.round(total.price * 1000000) / 1000000} ${total.currency}</td>
                 </tr>
                 <tr>
                     <td colspan="4">VAT ${this.fakt_obj.form_vat_rate}%</td>
-                    <td>${Math.round(total.vat_amount*1000000)/1000000} ${total.currency}</td>
+                    <td>${Math.round(total.vat_amount * 1000000) / 1000000} ${total.currency}</td>
                 </tr>
                 <tr>
                     <td colspan="4"></td>
-                    <td>${Math.round(total.price_incl_vat*1000000)/1000000} ${total.currency}</td>
+                    <td>${Math.round(total.price_incl_vat * 1000000) / 1000000} ${total.currency}</td>
                 </tr>`
         } else {
             html_invoice_total +=
@@ -466,11 +475,11 @@ class TymorroidBridge {
 
         html_invoice_total += "</tfoot>";
 
-        let html_invoice = 
-        "<h2>Invoice Preview</h2><div style=\"border: 1px solid; padding: 6px\">" 
-        + html_invoice_items 
-        + html_invoice_total
-        + "</div>";
+        let html_invoice =
+            "<h2>Invoice Preview</h2><div style=\"border: 1px solid; padding: 6px\">"
+            + html_invoice_items
+            + html_invoice_total
+            + "</div>";
 
         const html_debug =
             `<h2>Tyme Info</h2>
@@ -482,6 +491,10 @@ class TymorroidBridge {
         </tt>`;
 
         return html_debug + html_invoice;
+    }
+
+    sendInvoice() {
+        return;
     }
 }
 
