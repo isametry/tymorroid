@@ -33,9 +33,9 @@
         "value": "You can find your API key in [Fakturoid](https://app.fakturoid.cz) → Settings → User acccount → \"API v2 Key\" at the bottom."
     },
     {
-        "id": "login_check_button",
+        "id": "login_button",
         "type": "button",
-        "name": "Check Credentials",
+        "name": "Check Login",
         "actionFunction": "fakturoidThing.login()"
     },
     {
@@ -51,7 +51,7 @@
     {
         "id": "dates_enabled",
         "type": "checkbox",
-        "name": "Limit by date",
+        "name": "Limit by date:",
         "persist": true
     },
     {
@@ -149,15 +149,8 @@
     {
         "id": "item_prefix",
         "type": "text",
-        "name": "Item name prefix",
+        "name": "Item prefix (optional)",
         "placeholder": "Design work – ",
-        "persist": true
-    },
-    {
-        "id": "vat_rate",
-        "type": "number",
-        "name": "VAT rate (in whole %)",
-        "placeholder": "0",
         "persist": true
     },
     {
@@ -165,7 +158,7 @@
         "type": "dropdown",
         "name": "Client",
         "valueFunction": "fakturoidThing.getClientList()",
-        "valueFunctionReloadable": false,
+        "valueFunctionReloadable": true,
         "persist": true
     },
     {

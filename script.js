@@ -14,8 +14,8 @@ const TYME_ID_HIERARCHY = {
     "entry": "id"
 }
 
-function htmlColor(string, color) {
-    return `<span style=\"color: ${color}\">${string}</span>`;
+function roundToSixth(number) {
+    return Math.round(number * 1000000) / 1000000;
 }
 
 function minsToHoursString(minutes) {
@@ -119,10 +119,8 @@ class FakturoidInvoiceItem {
     quantity;
     unit_name;
     unit_price;
-    vat_rate;
 
     constructor(input, bridge) {
-        this.vat_rate = bridge.fakt_obj.form_vat_rate;
 
         // overloaded constructor. the invoice item is always created from an array of time entries.
         // if only a single entry is received, it is placed in a single-item array.
@@ -156,6 +154,10 @@ class FakturoidInvoiceItem {
                 this.name = bridge.fakt_obj.item_prefix + first_entry[TYME_DATA_HIERARCHY[i]];
                 break;
             }
+        }
+
+        while (this.name.length <= 2) {
+            this.name = this.name + ".";
         }
 
         let quantity_candidate = 0;
@@ -241,7 +243,6 @@ class FakturoidStuff {
     network_status;
 
     account_data;
-    form_vat_rate;
     client_list;
 
     round_places;
@@ -251,10 +252,17 @@ class FakturoidStuff {
     constructor() {
         this.network_status = {
             login_successful: false,
+            clients_successful: false,
             login_message: "Warning",
             login_detail: "Fakturoid connection status unknown",
-            clients_successful: false
+            found_cached_user: false,
         };
+
+        const cache_account_candidate = tyme.getSecureValue("tyme-fakturoid-cached-account-data");
+        if (cache_account_candidate != null) {
+            this.account_data = JSON.parse(cache_account_candidate);
+            this.network_status.found_cached_user = true;
+        }
 
         this.credentials = {
             slug: "",
@@ -285,14 +293,6 @@ class FakturoidStuff {
             "Accept": "application/json"
         }
 
-        //const vat_rate_candidate = parseInt(formValue.vat_rate);
-
-        //if (!isNaN(vat_rate_candidate)) {
-        this.form_vat_rate = formValue.vat_rate;
-        //} else {
-        //    this.form_vat_rate = 0;
-        //}
-
         this.round_places = parseInt(formValue.round_places);
         this.round_method = parseInt(formValue.round_method);
         this.item_prefix = formValue.item_prefix;
@@ -304,19 +304,33 @@ class FakturoidStuff {
             const response = utils.request(`https://app.fakturoid.cz/api/v2/accounts/${this.credentials.slug}/account.json`, "GET", this.headers);
             const ok_regex = /2\d\d/;
             if (ok_regex.test(response.statusCode)) {
+
+                // SUCCESS:
+
                 this.network_status.login_successful = true;
                 this.account_data = JSON.parse(response.result);
+                tyme.showAlert("Success", response.result);
                 this.network_status.login_message = "Success!"
                 this.network_status.login_detail = `Fakturoid connection successful as ${this.account_data.name}`;
+
+                // write to storage:
+
+                tyme.setSecureValue("tyme-fakturoid-cached-account-data", response.result);
             } else {
+
+                // FAKTUROID (HTML) ERROR:
+
                 this.network_status.login_message = "Error"
                 this.network_status.login_detail = `Fakturoid connection: HTML error ${response.statusCode}`;
             }
-
         } catch (error) {
+
+            // NETWORK / OTHER ERROR:
+
             this.network_status.login_message = "Error";
             this.network_status.login_detail = `Fakturoid connection error (${error})`;
         }
+
         tyme.showAlert(this.network_status.login_message, this.network_status.login_detail);
     }
 
@@ -327,12 +341,21 @@ class FakturoidStuff {
             const ok_regex = /2\d\d/;
             utils.log("tymorroid contacts list: " + response.statusCode);
             if (ok_regex.test(response.statusCode)) {
+
+                // clients SUCCESS:
+
                 this.network_status.clients_successful = true;
                 this.client_list = JSON.parse(response.result);
             } else {
+
+                // clients FAKTUROID ERROR:
+
                 this.network_status.clients_successful = false;
             }
         } catch (error) {
+
+            // clients NETWORK ERROR:
+
             this.network_status.clients_successful = false;
         }
     }
@@ -349,9 +372,8 @@ class FakturoidStuff {
                 dropdown_items.push(next_item);
             }
             return dropdown_items;
-        } else {
-            return [{ "name": "Error: no clients available!", "value": "" }];
-        }
+        } // else:
+        return [{ "name": "Error: no clients available!", "value": "" }];
     }
 }
 
@@ -397,6 +419,13 @@ class TymorroidBridge {
 
         // INVOICE PREVIEW:
 
+        const html_invoice_header =
+            `<div style="float: left; text-align: center; width: 49%">
+            <h3>${((this.fakt_obj.account_data.hasOwnProperty("name"))? this.fakt_obj.account_data.name : "")}</h3>
+            </div><div style="float: right; text-align: center; width: 49%">
+            <h3>${((formValue.clients_dropdown.hasOwnProperty("name"))? formValue.clients_dropdown.name : "[Client Name]")}</h3>
+            </div>`
+
         let html_invoice_items = `<table style=\"border: none\">
         <thead>
             <tr>
@@ -411,7 +440,9 @@ class TymorroidBridge {
         let total = {
             quantity: 0,
             price: 0,
-            unit_name: (this.invoice_items.length > 0) ? this.invoice_items[0].unit_name : ""
+            unit_name: (this.invoice_items.length > 0) ? this.invoice_items[0].unit_name : "",
+            vat_amount: 0,
+            price_incl_vat: 0
         };
 
         html_invoice_items += "<tbody>";
@@ -422,7 +453,7 @@ class TymorroidBridge {
                     <td>${item.unit_name}</td>
                     <td>${item.name}</td>
                     <td>${item.unit_price} ${this.currency}</td>
-                    <td>${Math.round(item.unit_price * item.quantity * 1000000) / 1000000} ${this.currency}</td>
+                    <td style="align: left">${roundToSixth(item.quantity * item.unit_price)} ${this.currency}</td>
                 </tr>`;
 
             if (item.unit_name == total.unit_name) {
@@ -438,38 +469,54 @@ class TymorroidBridge {
 
         let html_invoice_total = `<tfoot style="font-weight: bold;">`;
 
-        if (this.fakt_obj.form_vat_rate > 0) {
-            total.vat_amount = total.price * (this.fakt_obj.form_vat_rate / 100);
-            total.price_incl_vat = total.price + total.vat_amount;
+        this.fakt_obj.account_data.vat_rate = 50;
+
+        if (
+            (this.fakt_obj.network_status.login_successful || this.fakt_obj.network_status.found_cached_user) &&
+            this.fakt_obj.account_data.vat_rate > 0
+        ) {
+            if (this.fakt_obj.account_data.vat_price_mode === "from_total_with_vat") {
+                for (const item of this.invoice_items) {
+                    total.price_incl_vat += (item.quantity * item.unit_price) * ((100 + this.fakt_obj.account_data.vat_rate) / 100);
+                }
+                total.vat_amount = total.price_incl_vat - total.price;
+
+            } else {
+                total.vat_amount = total.price * (this.fakt_obj.account_data.vat_rate / 100);
+                total.price_incl_vat = total.price + total.vat_amount;
+            }
 
             html_invoice_total +=
                 `<tr>
                     <td colspan="4">Total without VAT</td>
-                    <td>${Math.round(total.price * 1000000) / 1000000} ${this.currency}</td>
+                    <td>${roundToSixth(total.price).toLocaleString()} ${this.currency}</td>
                 </tr>
                 <tr>
-                    <td colspan="4">VAT ${this.fakt_obj.form_vat_rate}%</td>
-                    <td>${Math.round(total.vat_amount * 1000000) / 1000000} ${this.currency}</td>
+                    <td colspan="4">VAT ${this.fakt_obj.account_data.vat_rate}%</td>
+                    <td>${roundToSixth(total.vat_amount).toLocaleString()} ${this.currency}</td>
                 </tr>
                 <tr>
                     <td colspan="4"></td>
-                    <td>${Math.round(total.price_incl_vat * 1000000) / 1000000} ${this.currency}</td>
+                    <td>${roundToSixth(total.price_incl_vat).toLocaleString()} ${this.currency}</td>
                 </tr>`
         } else {
             html_invoice_total +=
                 `<tr>
                     <td colspan="4">Total</td>
-                    <td>${total.price} ${this.currency}</td>
+                    <td>${total.price.toLocaleString()} ${this.currency}</td>
                 </tr>`
         }
 
-        html_invoice_total += "</tfoot>";
+        html_invoice_total += "</tfoot></table>";
 
         let html_invoice =
-            "<h2>Invoice Preview</h2><div style=\"border: 1px solid; padding: 6px\">"
+            "<h2>Invoice Preview</h2><div style=\"border: solid 1px; padding: 6pt; margin: 8pt 0 8pt 0;\">"
+            + html_invoice_header
             + html_invoice_items
             + html_invoice_total
             + "</div>";
+
+        // OTHER INFO (dates, account tidbits):
 
         const html_debug =
             `<h2>Tyme Info</h2>
@@ -477,10 +524,12 @@ class TymorroidBridge {
             Start date: ${this.tyme_obj.start_date.toDateString()}<br>
             End date: ${this.tyme_obj.end_date.toDateString()}<br>
             Real total duration: ${minsToHourFloat(this.getTotalDuration(), this.fakt_obj.round_places)} h (${minsToHoursString(this.getTotalDuration())})<br>
-            Invoice total duration: ${Math.round(total.quantity * 1000000) / 1000000} ${total.unit_name}<br>
+            Invoice total duration: ${roundToSixth(total.quantity)} ${total.unit_name}<br>
         </tt>`;
 
-        return html_debug + html_invoice;
+        const html_vat_note = `(The real sum${((total.vat_amount == 0) ? "" : " and VAT")} calculation is handled by Fakturoid, the above is just for illustration. If you've changed your Fakturoid tax defaults, please press "Check Login" and reopen this window.)`;
+
+        return (html_debug + html_invoice + html_vat_note);
     }
 
     sendInvoice() {
@@ -491,26 +540,30 @@ class TymorroidBridge {
             "lines": this.invoice_items
         }
 
-        utils.log("Tymorroid: invoice body: " + JSON.stringify(this.invoice_body));
+        if (!isNaN(parseInt(formValue.clients_dropdown))) {
+            try {
+                const response = utils.request(
+                    `https://app.fakturoid.cz/api/v2/accounts/${this.fakt_obj.credentials.slug}/invoices.json`,
+                    "POST",
+                    this.fakt_obj.headers,
+                    this.invoice_body
+                );
 
-        try {
-            const response = utils.request(
-                `https://app.fakturoid.cz/api/v2/accounts/${this.fakt_obj.credentials.slug}/invoices.json`,
-                "POST",
-                this.fakt_obj.headers,
-                this.invoice_body
-            );
+                const ok_regex = /2\d\d/;
 
-            const ok_regex = /2\d\d/;
+                if (ok_regex.test(response.statusCode)) {
+                    const parsed_response = JSON.parse(response.result);
+                    tyme.showAlert("Success", "Invoice generated with the number " + parsed_response.number);
+                    tyme.openURL(parsed_response.html_url);
+                } else {
+                    tyme.showAlert("Error", `Error ${response.statusCode}: ${response.result}`);
+                }
 
-            if (ok_regex.test(response.statusCode)) {
-                tyme.showAlert("Success", response.result);
-            } else {
-                tyme.showAlert("Error", `Error ${response.statusCode}: ${response.result}`);
+            } catch (error) {
+                tyme.showAlert("Error", `${error}`);
             }
-
-        } catch (error) {
-            tyme.showAlert("Error", `${error}`);
+        } else {
+            tyme.showAlert("Error", "Please log in with Fakturoid and select a client!");
         }
     }
 }
