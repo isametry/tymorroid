@@ -46,7 +46,7 @@ function minsToHourFloat(minutes, places = -1, mode = 0) {
 class GroupedTimeEntries {
 
     // group time entries based on a given property, so that they can be merged into a single invoice item.
-    // apart from the property (id) being identical, entries also need to have the same currency and hourly rate.
+    // apart from the property (id) being identical, entries also need to have the same hourly rate.
     // groupable items are put in arrays, this.list keeps a master array of the group arrays.
 
     grouping_id_type;
@@ -81,8 +81,7 @@ class GroupedTimeEntries {
 
         if (found_index != null && // a matching id is found on the list…
             entry.duration_unit === this.list[found_index][0].duration_unit &&
-            entry.rate === this.list[found_index][0].rate &&
-            entry.rate_unit === this.list[found_index][0].rate_unit // …and the two entries are actually comparable
+            entry.rate === this.list[found_index][0].rate // …and the two entries are actually comparable
         ) {
             is_groupable = true;
         }
@@ -118,7 +117,6 @@ class FakturoidInvoiceItem {
 
     name;
     quantity;
-    currency;
     unit_name;
     unit_price;
     vat_rate;
@@ -140,7 +138,6 @@ class FakturoidInvoiceItem {
         const first_entry = entries[0];
         this.unit_name = "h";
         this.unit_price = first_entry.rate;
-        this.currency = first_entry.rate_unit;
 
         // NAMING:
         // search for an applicable name from the time entry for the invoice line.
@@ -341,6 +338,7 @@ class FakturoidStuff {
     }
 
     getClientList() {
+        this.importClients();
         if (this.network_status.clients_successful) {
             const dropdown_items = [];
             for (const client of this.client_list) {
@@ -360,9 +358,11 @@ class FakturoidStuff {
 class TymorroidBridge {
     tyme_obj;
     fakt_obj;
+
     currency;
 
     invoice_items;
+    invoice_body;
 
     constructor(tymeObject, fakturoidObject) {
         this.tyme_obj = tymeObject;
@@ -370,24 +370,16 @@ class TymorroidBridge {
     }
 
     generateInvoiceItems() {
+        this.currency = tyme.currencyCode();
+
         this.tyme_obj.processEntries();
         this.fakt_obj.readForm();
 
         this.invoice_items = [];
 
-        try {
-            this.currency = this.tyme_obj.time_entries[0].rate_unit;
-        } catch (error) {
-            null
-        }
-
         for (const group of this.tyme_obj.getEntries()) {
+
             const next_item = new FakturoidInvoiceItem(group, this);
-
-            if (this.currency != undefined && next_item.currency != this.currency) {
-                this.currency = undefined;
-            }
-
             this.invoice_items.push(next_item);
         }
     }
@@ -419,10 +411,8 @@ class TymorroidBridge {
         let total = {
             quantity: 0,
             price: 0,
-            unit_name: (this.invoice_items.length > 0) ? this.invoice_items[0].unit_name : "",
-            currency: (this.invoice_items.length > 0) ? this.invoice_items[0].currency : "",
-
-        }
+            unit_name: (this.invoice_items.length > 0) ? this.invoice_items[0].unit_name : ""
+        };
 
         html_invoice_items += "<tbody>";
         for (const item of this.invoice_items) {
@@ -431,8 +421,8 @@ class TymorroidBridge {
                     <td>${item.quantity}</td>
                     <td>${item.unit_name}</td>
                     <td>${item.name}</td>
-                    <td>${item.unit_price} ${item.currency}</td>
-                    <td>${Math.round(item.unit_price * item.quantity * 1000000) / 1000000} ${item.currency}</td>
+                    <td>${item.unit_price} ${this.currency}</td>
+                    <td>${Math.round(item.unit_price * item.quantity * 1000000) / 1000000} ${this.currency}</td>
                 </tr>`;
 
             if (item.unit_name == total.unit_name) {
@@ -455,21 +445,21 @@ class TymorroidBridge {
             html_invoice_total +=
                 `<tr>
                     <td colspan="4">Total without VAT</td>
-                    <td>${Math.round(total.price * 1000000) / 1000000} ${total.currency}</td>
+                    <td>${Math.round(total.price * 1000000) / 1000000} ${this.currency}</td>
                 </tr>
                 <tr>
                     <td colspan="4">VAT ${this.fakt_obj.form_vat_rate}%</td>
-                    <td>${Math.round(total.vat_amount * 1000000) / 1000000} ${total.currency}</td>
+                    <td>${Math.round(total.vat_amount * 1000000) / 1000000} ${this.currency}</td>
                 </tr>
                 <tr>
                     <td colspan="4"></td>
-                    <td>${Math.round(total.price_incl_vat * 1000000) / 1000000} ${total.currency}</td>
+                    <td>${Math.round(total.price_incl_vat * 1000000) / 1000000} ${this.currency}</td>
                 </tr>`
         } else {
             html_invoice_total +=
                 `<tr>
                     <td colspan="4">Total</td>
-                    <td>${total.price} ${total.currency}</td>
+                    <td>${total.price} ${this.currency}</td>
                 </tr>`
         }
 
@@ -494,7 +484,34 @@ class TymorroidBridge {
     }
 
     sendInvoice() {
-        return;
+        this.generateInvoiceItems();
+        this.invoice_body = {
+            "subject_id": formValue.clients_dropdown,
+            "currency": this.currency,
+            "lines": this.invoice_items
+        }
+
+        utils.log("Tymorroid: invoice body: " + JSON.stringify(this.invoice_body));
+
+        try {
+            const response = utils.request(
+                `https://app.fakturoid.cz/api/v2/accounts/${this.fakt_obj.credentials.slug}/invoices.json`,
+                "POST",
+                this.fakt_obj.headers,
+                this.invoice_body
+            );
+
+            const ok_regex = /2\d\d/;
+
+            if (ok_regex.test(response.statusCode)) {
+                tyme.showAlert("Success", response.result);
+            } else {
+                tyme.showAlert("Error", `Error ${response.statusCode}: ${response.result}`);
+            }
+
+        } catch (error) {
+            tyme.showAlert("Error", `${error}`);
+        }
     }
 }
 

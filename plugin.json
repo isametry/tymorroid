@@ -9,7 +9,7 @@
   "authorUrl": "https://isametry.github.io",
   "icon": "poweroutlet.type.f",
   "scriptName": "script.js",
-  "scriptMain": "tymeThing.sendInvoice()",
+  "scriptMain": "mainThing.sendInvoice()",
   "scriptPreview": "mainThing.getPreview()",
   "formName": "form.json",
   "localizationName": "localization.json"

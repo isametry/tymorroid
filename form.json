@@ -165,7 +165,7 @@
         "type": "dropdown",
         "name": "Client",
         "valueFunction": "fakturoidThing.getClientList()",
-        "valueFunctionReloadable": true,
+        "valueFunctionReloadable": false,
         "persist": true
     },
     {
