@@ -1,3 +1,10 @@
+// CONFIG:
+
+const invoice_unit_name = "h"; // word for "hour" shown on the invoice. change the text between the quotes.
+
+// END OF CONFIG
+
+
 const TYME_DATA_HIERARCHY = [
     "category", // 0
     "project", // 1
@@ -41,6 +48,17 @@ function minsToHourFloat(minutes, places = -1, mode = 0) {
     }
 
     return (minutes / 60);
+}
+
+function tryParseJson(json) {
+    try {
+        var o = JSON.parse(json);
+        if (o && typeof o === "object") {
+            return o;
+        }
+    } catch (e) {
+    }
+    return undefined;
 }
 
 class GroupedTimeEntries {
@@ -134,7 +152,7 @@ class FakturoidInvoiceItem {
         }
 
         const first_entry = entries[0];
-        this.unit_name = "h";
+        this.unit_name = bridge.fakt_obj.time_unit_name;
         this.unit_price = first_entry.rate;
 
         // NAMING:
@@ -244,10 +262,13 @@ class FakturoidStuff {
 
     account_data;
     client_list;
+    client_dropdown_items;
+    selected_client;
 
     round_places;
     round_method;
     item_prefix;
+    time_unit_name;
 
     constructor() {
         this.network_status = {
@@ -269,6 +290,9 @@ class FakturoidStuff {
             email: "",
             key: ""
         }
+
+        this.time_unit_name = invoice_unit_name;
+        this.readForm();
     }
 
     readForm() {
@@ -280,7 +304,7 @@ class FakturoidStuff {
         // (and avoiding regex at all costs, lol):
 
         slug_candidate = input_URL.slice((input_URL.indexOf(URL_prefix) + URL_prefix.length))
-        slug_candidate = slug_candidate.slice(0, slug_candidate.indexOf("/"));
+        slug_candidate = slug_candidate.slice(0, ((slug_candidate.includes("/"))? slug_candidate.indexOf("/") : slug_candidate.length));
 
         this.credentials.slug = slug_candidate;
         this.credentials.email = formValue.login_email;
@@ -296,6 +320,7 @@ class FakturoidStuff {
         this.round_places = parseInt(formValue.round_places);
         this.round_method = parseInt(formValue.round_method);
         this.item_prefix = formValue.item_prefix;
+        this.selected_client = formValue.clients_dropdown;
     }
 
     login() {
@@ -309,7 +334,6 @@ class FakturoidStuff {
 
                 this.network_status.login_successful = true;
                 this.account_data = JSON.parse(response.result);
-                tyme.showAlert("Success", response.result);
                 this.network_status.login_message = "Success!"
                 this.network_status.login_detail = `Fakturoid connection successful as ${this.account_data.name}`;
 
@@ -346,6 +370,7 @@ class FakturoidStuff {
 
                 this.network_status.clients_successful = true;
                 this.client_list = JSON.parse(response.result);
+                utils.writeToFile("pa_clients.json", response.result);
             } else {
 
                 // clients FAKTUROID ERROR:
@@ -362,16 +387,16 @@ class FakturoidStuff {
 
     getClientList() {
         this.importClients();
+        this.client_dropdown_items = [];
         if (this.network_status.clients_successful) {
-            const dropdown_items = [];
             for (const client of this.client_list) {
                 const next_item = {
                     "name": ("" + client["name"]),
                     "value": ("" + client["id"])
                 };
-                dropdown_items.push(next_item);
+                this.client_dropdown_items.push(next_item);
             }
-            return dropdown_items;
+            return this.client_dropdown_items;
         } // else:
         return [{ "name": "Error: no clients available!", "value": "" }];
     }
@@ -421,9 +446,9 @@ class TymorroidBridge {
 
         const html_invoice_header =
             `<div style="float: left; text-align: center; width: 49%">
-            <h3>${((this.fakt_obj.account_data.hasOwnProperty("name"))? this.fakt_obj.account_data.name : "")}</h3>
+            <h3>${((this.fakt_obj.account_data.hasOwnProperty("name")) ? this.fakt_obj.account_data.name : "")}</h3>
             </div><div style="float: right; text-align: center; width: 49%">
-            <h3>${((formValue.clients_dropdown.hasOwnProperty("name"))? formValue.clients_dropdown.name : "[Client Name]")}</h3>
+            <h3></h3>
             </div>`
 
         let html_invoice_items = `<table style=\"border: none\">
@@ -469,11 +494,10 @@ class TymorroidBridge {
 
         let html_invoice_total = `<tfoot style="font-weight: bold;">`;
 
-        this.fakt_obj.account_data.vat_rate = 50;
-
         if (
             (this.fakt_obj.network_status.login_successful || this.fakt_obj.network_status.found_cached_user) &&
-            this.fakt_obj.account_data.vat_rate > 0
+            this.fakt_obj.account_data.vat_rate > 0 &&
+            this.fakt_obj.account_data === "vat_payer" || this.fakt_obj.account_data === "identified_person"
         ) {
             if (this.fakt_obj.account_data.vat_price_mode === "from_total_with_vat") {
                 for (const item of this.invoice_items) {
@@ -527,7 +551,7 @@ class TymorroidBridge {
             Invoice total duration: ${roundToSixth(total.quantity)} ${total.unit_name}<br>
         </tt>`;
 
-        const html_vat_note = `(The real sum${((total.vat_amount == 0) ? "" : " and VAT")} calculation is handled by Fakturoid, the above is just for illustration. If you've changed your Fakturoid tax defaults, please press "Check Login" and reopen this window.)`;
+        const html_vat_note = `(The real sum${((total.vat_amount == 0) ? "" : " and VAT")} calculation is handled by Fakturoid, the above is just for illustration. If you've changed your Fakturoid tax defaults, please click "Check Login" and reopen this window.)`;
 
         return (html_debug + html_invoice + html_vat_note);
     }
@@ -554,6 +578,16 @@ class TymorroidBridge {
                 if (ok_regex.test(response.statusCode)) {
                     const parsed_response = JSON.parse(response.result);
                     tyme.showAlert("Success", "Invoice generated with the number " + parsed_response.number);
+
+                    if (formValue.mark_billed_toggle) {
+                        let ids_to_mark = [];
+                        for (const entry of this.tyme_obj.time_entries) {
+                            ids_to_mark.push(entry.id);
+                        }
+                        tyme.setBillingState(ids_to_mark, 1);
+                        this.generateInvoiceItems();
+                    }
+
                     tyme.openURL(parsed_response.html_url);
                 } else {
                     tyme.showAlert("Error", `Error ${response.statusCode}: ${response.result}`);
