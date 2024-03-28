@@ -21,6 +21,8 @@ const TYME_ID_HIERARCHY = {
     "entry": "id"
 }
 
+const ok_regex = /2\d\d/;
+
 function roundToSixth(number) {
     return Math.round(number * 1000000) / 1000000;
 }
@@ -231,6 +233,7 @@ class TymeStuff {
     }
 
     importEntries() {
+        utils.log("tymorroid: importing time entries…");
         this.time_entries = tyme.timeEntries(
             this.start_date,
             this.end_date,
@@ -239,6 +242,7 @@ class TymeStuff {
             (this.unbilled_only) ? 0 : null,
             true // => billable only
         );
+        utils.log(`tymorroid: time entries imported, array length = ${this.time_entries.length}`);
     }
 
     processEntries() {
@@ -279,6 +283,8 @@ class FakturoidStuff {
             found_cached_user: false,
         };
 
+        this.client_list = [];
+
         const cache_account_candidate = tyme.getSecureValue("tyme-fakturoid-cached-account-data");
         if (cache_account_candidate != null) {
             this.account_data = JSON.parse(cache_account_candidate);
@@ -304,7 +310,7 @@ class FakturoidStuff {
         // (and avoiding regex at all costs, lol):
 
         slug_candidate = input_URL.slice((input_URL.indexOf(URL_prefix) + URL_prefix.length))
-        slug_candidate = slug_candidate.slice(0, ((slug_candidate.includes("/"))? slug_candidate.indexOf("/") : slug_candidate.length));
+        slug_candidate = slug_candidate.slice(0, ((slug_candidate.includes("/")) ? slug_candidate.indexOf("/") : slug_candidate.length));
 
         this.credentials.slug = slug_candidate;
         this.credentials.email = formValue.login_email;
@@ -325,9 +331,9 @@ class FakturoidStuff {
 
     login() {
         this.readForm();
+        utils.log("tymorroid: logging in…");
         try {
             const response = utils.request(`https://app.fakturoid.cz/api/v2/accounts/${this.credentials.slug}/account.json`, "GET", this.headers);
-            const ok_regex = /2\d\d/;
             if (ok_regex.test(response.statusCode)) {
 
                 // SUCCESS:
@@ -360,28 +366,39 @@ class FakturoidStuff {
 
     importClients() {
         this.readForm();
-        try {
-            const response = utils.request(`https://app.fakturoid.cz/api/v2/accounts/${this.credentials.slug}/subjects.json`, "GET", this.headers);
-            const ok_regex = /2\d\d/;
-            utils.log("tymorroid contacts list: " + response.statusCode);
-            if (ok_regex.test(response.statusCode)) {
+        utils.log("tymorroid: importing clients…");
 
-                // clients SUCCESS:
+        for (let i = 1; i < 100; i++) {
+            try {
+                const response = utils.request(`https://app.fakturoid.cz/api/v2/accounts/${this.credentials.slug}/subjects.json`, "GET", this.headers, { "page": i });
 
-                this.network_status.clients_successful = true;
-                this.client_list = JSON.parse(response.result);
-                utils.writeToFile("pa_clients.json", response.result);
-            } else {
+                if (ok_regex.test(response.statusCode)) {
+                    // clients SUCCESS:
 
-                // clients FAKTUROID ERROR:
+                    this.network_status.clients_successful = true;
+                    const page = JSON.parse(response.result);
+
+                    if (page.length > 0) {
+                        for (const item of page) {
+                            this.client_list.push(item);
+                        }
+                    } else {
+                        break;
+                    }
+                } else {
+
+                    // clients FAKTUROID ERROR:
+
+                    this.network_status.clients_successful = false;
+                    break;
+                }
+            } catch (error) {
+
+                // clients NETWORK ERROR:
 
                 this.network_status.clients_successful = false;
+                break;
             }
-        } catch (error) {
-
-            // clients NETWORK ERROR:
-
-            this.network_status.clients_successful = false;
         }
     }
 
@@ -429,6 +446,8 @@ class TymorroidBridge {
             const next_item = new FakturoidInvoiceItem(group, this);
             this.invoice_items.push(next_item);
         }
+
+        utils.log(`tymorroid: prepared ${this.invoice_items.length} invoice items`);
     }
 
     getTotalDuration() {
@@ -565,6 +584,7 @@ class TymorroidBridge {
         }
 
         if (!isNaN(parseInt(formValue.clients_dropdown))) {
+            utils.log(`tymorroid: sending invoice…`);
             try {
                 const response = utils.request(
                     `https://app.fakturoid.cz/api/v2/accounts/${this.fakt_obj.credentials.slug}/invoices.json`,
@@ -572,8 +592,6 @@ class TymorroidBridge {
                     this.fakt_obj.headers,
                     this.invoice_body
                 );
-
-                const ok_regex = /2\d\d/;
 
                 if (ok_regex.test(response.statusCode)) {
                     const parsed_response = JSON.parse(response.result);
