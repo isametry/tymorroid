@@ -89,16 +89,16 @@
         "name": "Group into:",
         "values": [
             {
-                "category": "Categories"
-            },
-            {
-                "project": "Projects"
+                "subtask": "Tasks & Subtasks"
             },
             {
                 "task": "Tasks"
             },
             {
-                "subtask": "Tasks & Subtasks"
+                "project": "Projects"
+            },
+            {
+                "category": "Categories"
             }
         ],
         "persist": true

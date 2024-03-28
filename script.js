@@ -169,6 +169,8 @@ class FakturoidInvoiceItem {
 
         //   start at the deepest level (e.g. subtask), if the name is empty, jump out (e.g. task):
 
+        this.name = "";
+        
         for (let i = current_lvl; i >= 0; i--) {
             if (first_entry[TYME_DATA_HIERARCHY[i]]) {
                 this.name = bridge.fakt_obj.item_prefix + first_entry[TYME_DATA_HIERARCHY[i]];
@@ -284,6 +286,8 @@ class FakturoidStuff {
         };
 
         this.client_list = [];
+
+        this.account_data = {};
 
         const cache_account_candidate = tyme.getSecureValue("tyme-fakturoid-cached-account-data");
         if (cache_account_candidate != null) {
