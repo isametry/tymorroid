@@ -3,7 +3,7 @@
   "tymeMinVersion": "2024.3",
   "version": "0.1",
   "type": "export",
-  "name": "Tymorroid",
+  "name": "Fakturoid Invoice",
   "summary": "Fakturoid invoices from Tyme",
   "author": "isametry",
   "authorUrl": "https://isametry.github.io",
