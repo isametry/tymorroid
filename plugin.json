@@ -1,7 +1,7 @@
 {
   "id": "fakturoid_exporter",
   "tymeMinVersion": "2024.3",
-  "version": "0.1",
+  "version": "0.1.1",
   "type": "export",
   "name": "Fakturoid Invoice",
   "summary": "Fakturoid invoices from Tyme",
