@@ -52,18 +52,13 @@
         "id": "dates_enabled",
         "type": "checkbox",
         "name": "Limit by date:",
-        "persist": true
+        "persist": true,
+        "actionFunction": "updateFormStatus_Dates()"
     },
     {
-        "id": "start_date",
-        "type": "date",
-        "name": "Start date",
-        "persist": true
-    },
-    {
-        "id": "end_date",
-        "type": "date",
-        "name": "End date",
+        "id": "date_range",
+        "type": "daterange",
+        "name": "",
         "persist": true
     },
     {
@@ -79,7 +74,20 @@
         "persist": true
     },
     {
-        "id": "separator2",
+        "id": "separator3",
+        "type": "separator",
+        "name": ""
+    },
+    {
+        "id": "clients_dropdown",
+        "type": "dropdown",
+        "name": "Client",
+        "valueFunction": "fakturoidThing.getClientList()",
+        "valueFunctionReloadable": true,
+        "persist": true
+    },
+    {
+        "id": "separator3",
         "type": "separator",
         "name": ""
     },
@@ -109,25 +117,26 @@
         "name": "Rounding",
         "values": [
             {
-                "-1": "None"
-            },
-            {
-                "0": "Whole hours"
-            },
-            {
-                "1": "1 decimal place"
-            },
-            {
-                "2": "2 decimal places"
+                "4": "4 decimal places"
             },
             {
                 "3": "3 decimal places"
             },
             {
-                "4": "4 decimal places"
+                "2": "2 decimal places"
+            },
+            {
+                "1": "1 decimal place"
+            },
+            {
+                "0": "Whole hours"
+            },
+            {
+                "-1": "None"
             }
         ],
-        "persist": true
+        "persist": true,
+        "actionFunction": "updateFormStatus_RoundMethod()"
     },
     {
         "id": "round_method",
@@ -147,36 +156,59 @@
         "persist": true
     },
     {
-        "id": "item_prefix",
-        "type": "text",
-        "name": "Item prefix (optional)",
-        "placeholder": "Design work – ",
-        "persist": true
-    },
-    {
-        "id": "clients_dropdown",
-        "type": "dropdown",
-        "name": "Client",
-        "valueFunction": "fakturoidThing.getClientList()",
-        "valueFunctionReloadable": true,
-        "persist": true
-    },
-    {
         "id": "separator2",
         "type": "separator",
         "name": ""
     },
     {
-        "id": "apply_all_button",
-        "type": "button",
-        "name": "Apply All",
-        "value": "",
-        "actionFunction": "mainThing.getPreview()"
+        "id": "use_item_prefix",
+        "type": "checkbox",
+        "name": "Use prefix for invoice items:",
+        "persist": true,
+        "actionFunction": "updateFormStatus_Prefix()"
     },
     {
-        "id": "apply_hint",
-        "type": "hint",
+        "id": "item_prefix",
+        "type": "text",
         "name": "",
-        "value": "(In text fields, you can also press Return to apply)"
+        "placeholder": "Design work – ",
+        "persist": true
+    },
+    {
+        "id": "use_custom_units",
+        "type": "checkbox",
+        "name": "Use custom unit names",
+        "persist": true,
+        "actionFunction": "updateFormStatus_UnitNames()"
+    },
+    {
+        "id": "custom_unit_hour",
+        "type": "text",
+        "name": "Hour",
+        "placeholder": "h",
+        "isHidden": true,
+        "persist": true
+    },
+    {
+        "id": "custom_unit_piece",
+        "type": "text",
+        "name": "Piece",
+        "placeholder": "pcs",
+        "isHidden": true,
+        "persist": true
+    },
+    {
+        "id": "custom_unit_km",
+        "type": "text",
+        "name": "Kilometer",
+        "placeholder": "km",
+        "isHidden": true,
+        "persist": true
+    },
+    {
+        "id": "apply",
+        "type": "button",
+        "name": "Apply All",
+        "actionFunction": "mainThing.getPreview()"
     }
 ]

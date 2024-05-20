@@ -1,9 +1,5 @@
-// CONFIG:
-
-const invoice_unit_name = "h"; // word for "hour" shown on the invoice. change the text between the quotes.
-
-// END OF CONFIG
-
+const STANDARD_UNIT_LABEL_HOUR = "h"; 
+const STANDARD_UNIT_LABEL_PIECE = "pcs";
 
 const TYME_DATA_HIERARCHY = [
     "category", // 0
@@ -21,7 +17,73 @@ const TYME_ID_HIERARCHY = {
     "entry": "id"
 }
 
-const ok_regex = /2\d\d/;
+const RELEVANT_GROUPING_PROPERTIES = {
+    "timed": ["type", "rate", "rate_unit", "duration_unit"],
+    "mileage": ["type", "rate", "rate_unit", "distance_unit"],
+    "fixed": ["type", "rate", "rate_unit"]
+}
+
+function getRelevantQuantity(entry) {
+    const the_type = entry.hasOwnProperty("type") ? entry.type : "";
+
+    switch (the_type) {
+        case "timed":
+            return "duration";
+        case "fixed":
+            return "quantity";
+        case "mileage":
+            return "distance";
+        default:
+            return "";
+    }
+}
+
+function getRelevantUnits(entry) {
+    const the_type = entry.hasOwnProperty("type") ? entry.type : "";
+
+    switch (the_type) {
+        case "timed":
+            if (formValue.use_custom_units && formValue.custom_unit_hour) {
+                return formValue.custom_unit_hour
+            } else {
+                return STANDARD_UNIT_LABEL_HOUR;
+            }
+        case "fixed":
+            if (formValue.use_custom_units && formValue.custom_unit_piece) {
+                return formValue.custom_unit_piece
+            } else {
+                return STANDARD_UNIT_LABEL_PIECE;
+            }
+        case "mileage":
+            if (formValue.use_custom_units && formValue.custom_unit_kilometer) {
+                return formValue.custom_unit_kilometer
+            } else {
+                return entry.distance_unit;
+            }
+        default:
+            return "";
+    }
+}
+
+async function updateFormStatus_Dates() {
+    formElement.date_range.enabled = formValue.dates_enabled;
+}
+
+async function updateFormStatus_RoundMethod(){
+    formElement.round_method.enabled = !(formValue.round_places == -1);
+}
+
+async function updateFormStatus_Prefix(){
+    formElement.item_prefix.enabled = formValue.use_item_prefix;
+}
+
+async function updateFormStatus_UnitNames(){
+    formElement.custom_unit_hour.isHidden = !formValue.use_custom_units;
+    formElement.custom_unit_piece.isHidden = !formValue.use_custom_units;
+    formElement.custom_unit_km.isHidden = !formValue.use_custom_units;
+}
+
+const HTTPS_OK_REGEX = /2\d\d/;
 
 function roundToSixth(number) {
     return Math.round(number * 1000000) / 1000000;
@@ -34,22 +96,27 @@ function minsToHoursString(minutes) {
     return `${hours}:${rest}`;
 }
 
-function minsToHourFloat(minutes, places = -1, mode = 0) {
+function customRound(float, places = -1, mode = 0) {
     if (places >= 0) {
         const magnitude = 10 ** places;
         if (mode > 0) {
             // ROUND DOWN
-            return Math.ceil((minutes / 60) * magnitude) / magnitude;
+            return Math.ceil(float * magnitude) / magnitude;
         } else if (mode < 0) {
             // ROUND UP
-            return Math.floor((minutes / 60) * magnitude) / magnitude;
+            return Math.floor(float * magnitude) / magnitude;
         } else {
             // ROUND PLAIN
-            return Math.round((minutes / 60) * magnitude) / magnitude;
+            return Math.round(float * magnitude) / magnitude;
         }
     }
 
-    return (minutes / 60);
+    // NO ROUNDING (places <= -1):
+    return float;
+}
+
+function minutesToHoursRound(minutes, places = -1, mode = 0) {
+    return customRound((minutes / 60), places, mode);
 }
 
 function tryParseJson(json) {
@@ -63,10 +130,10 @@ function tryParseJson(json) {
     return undefined;
 }
 
-class GroupedTimeEntries {
+class GroupedEntries {
 
-    // group time entries based on a given property, so that they can be merged into a single invoice item.
-    // apart from the property (id) being identical, entries also need to have the same hourly rate.
+    // group entries based on a given property, so that they can be merged into a single invoice item.
+    // apart from the property (id) at a selected level being identical, entries need the same units and rate price.
     // groupable items are put in arrays, this.list keeps a master array of the group arrays.
 
     grouping_id_type;
@@ -81,38 +148,42 @@ class GroupedTimeEntries {
         }
     }
 
-    addEntry(entry) {
-        const curr_id = entry[this.grouping_id_type];
-        let found_index;
-        let is_groupable = false;
+    addEntry(candidate) {
 
-        // ENTRY ID LOOKUP:
+        // lookup entries by the chosen id type. on a match, check if the entries are compatible
 
-        if (curr_id) { // if exists and isn't ""
-            for (let i = 0; i < this.list.length; i++) {
-                if (this.list[i][0][this.grouping_id_type] == curr_id) {
-                    found_index = i;
-                    break;
+        const curr_id = candidate[this.grouping_id_type];
+        const properties_to_check = RELEVANT_GROUPING_PROPERTIES[candidate.type];
+
+        let compatible_group_index; // to be found
+
+        if (curr_id != null) {
+            for (let i = 0; i < this.list.length; i++) { // loop through existing arrays of grouped entries
+                if (this.list[i][0][this.grouping_id_type] === curr_id) { // if IDs match…
+                    let can_be_grouped = true; // unless proven otherwise!
+
+                    for (const property of properties_to_check) {
+                        if (candidate[property] !== this.list[i][0][property]) {
+                            can_be_grouped = false;
+                            break;
+                        }
+                    }
+
+                    if (can_be_grouped) {
+                        compatible_group_index = i;
+                        break;
+                    }
                 }
             }
         }
 
-        // ENTRY COMPATIBILITY CHECKING:
-
-        if (found_index != null && // a matching id is found on the list…
-            entry.duration_unit === this.list[found_index][0].duration_unit &&
-            entry.rate === this.list[found_index][0].rate // …and the two entries are actually comparable
-        ) {
-            is_groupable = true;
-        }
-
         // ENTRY HANDLING:
 
-        if (is_groupable) {
-            this.list[found_index].push(entry);
+        if (compatible_group_index != null) {
+            this.list[compatible_group_index].push(candidate);
             return;
         } else {
-            const addition = new Array(entry);
+            const addition = new Array(candidate);
             this.list.push(addition);
             return;
         }
@@ -132,13 +203,14 @@ class GroupedTimeEntries {
 class FakturoidInvoiceItem {
 
     // Created from one or multiple time entries, objects of this class can be passed to Fakturoid as invoice lines.
-    // With multiple entries, we assume the entries are compatible (same rate, same units – this is handled by GroupedTimeEntries) and sum up their duration.
+    // With multiple entries, we assume the entries are compatible (same rate, same units – this is handled by GroupedEntries) and sum up their duration.
     // Common data (name, rate and units) will be taken from the first entry received.
 
     name;
     quantity;
     unit_name;
     unit_price;
+    #type;
 
     constructor(input, bridge) {
 
@@ -154,7 +226,6 @@ class FakturoidInvoiceItem {
         }
 
         const first_entry = entries[0];
-        this.unit_name = bridge.fakt_obj.time_unit_name;
         this.unit_price = first_entry.rate;
 
         // NAMING:
@@ -163,39 +234,62 @@ class FakturoidInvoiceItem {
         //   look no deeper than the grouping_id:
 
         const current_lvl = TYME_DATA_HIERARCHY.indexOf(bridge.tyme_obj.grouping_type);
-        if (current_lvl === -1) {
+        if (current_lvl === -1) { // exception: if user disables grouping => start at the bottom
             current_lvl = TYME_DATA_HIERARCHY.length - 1;
         }
 
         //   start at the deepest level (e.g. subtask), if the name is empty, jump out (e.g. task):
 
         this.name = "";
-        
+
         for (let i = current_lvl; i >= 0; i--) {
             if (first_entry[TYME_DATA_HIERARCHY[i]]) {
-                this.name = bridge.fakt_obj.item_prefix + first_entry[TYME_DATA_HIERARCHY[i]];
+                this.name = first_entry[TYME_DATA_HIERARCHY[i]];
                 break;
             }
         }
+
+        this.name = ((formValue.use_item_prefix)? bridge.fakt_obj.item_prefix : "") + this.name;
 
         while (this.name.length <= 2) {
             this.name = this.name + ".";
         }
 
-        let quantity_candidate = 0;
+        // choose correct units and sum up of the correct quantity, depending on entry type [duration / mileage / fixed]
+
+        this.unit_name = getRelevantUnits(first_entry);
+
+        let sum = 0;
+        const the_relevant_quantity = getRelevantQuantity(first_entry);
+
         for (const entry of entries) {
-            quantity_candidate += entry.duration;
+            sum += entry[the_relevant_quantity];
         }
 
-        this.quantity = minsToHourFloat(
-            quantity_candidate,
-            bridge.fakt_obj.round_places,
-            bridge.fakt_obj.round_method
-        );
+        // set the quantity of the invoice item. if it's a timed item, convert to hours and round
 
+        if (first_entry.type === "timed" && first_entry.duration_unit === "m") {
+            this.quantity = minutesToHoursRound(
+                sum,
+                bridge.fakt_obj.round_places,
+                bridge.fakt_obj.round_method
+            );
+        } else {
+            this.quantity = customRound(
+                sum,
+                bridge.fakt_obj.round_places,
+                bridge.fakt_obj.round_method
+            );
+        }
+
+        this.#type = first_entry.type;
     }
 
-    // no getter here. pass me directly to Fakturoid! 
+    getType() {
+        return this.#type;
+    }
+
+    // no general getter here. pass me directly to Fakturoid! 
 }
 
 class TymeStuff {
@@ -215,17 +309,12 @@ class TymeStuff {
     }
 
     readForm() {
-        // START DATE:
-        if (formValue.dates_enabled && isFinite(formValue.start_date)) {
-            this.start_date = formValue.start_date;
+        // LIMIT BY DATE:
+        if (formValue.dates_enabled) {
+            this.start_date = formValue.date_range[0];
+            this.end_date = formValue.date_range[1];
         } else {
-            this.start_date = new Date("1970-01-02")
-        }
-
-        // END DATE:
-        if (formValue.dates_enabled && isFinite(formValue.end_date)) {
-            this.end_date = formValue.end_date;
-        } else {
+            this.start_date = new Date("1970-01-02");
             this.end_date = new Date("2199-12-31");
         }
 
@@ -245,15 +334,46 @@ class TymeStuff {
             true // => billable only
         );
         utils.log(`tymorroid: time entries imported, array length = ${this.time_entries.length}`);
+        utils.writeToFile("entries.json", JSON.stringify(this.time_entries));
     }
 
     processEntries() {
         this.readForm();
         this.importEntries();
-        this.grouped_entries = new GroupedTimeEntries(
+        this.grouped_entries = new GroupedEntries(
             this.time_entries,
             this.grouping_type
         );
+    }
+
+    getTotalTimeDuration() {
+        let output = 0;
+        for (const entry of this.time_entries) {
+            if (entry.type === "timed") {
+                output += entry.duration;
+            }
+        }
+        return output;
+    }
+
+    getTotalMileage() {
+        let output = 0;
+        for (const entry of this.time_entries) {
+            if (entry.type === "mileage") {
+                output += entry.distance;
+            }
+        }
+        return output;
+    }
+
+    getTotalItems() {
+        let output = 0;
+        for (const entry of this.tyme_obj.time_entries) {
+            if (entry.type === "fixed") {
+                output += entry.quantity;
+            }
+        }
+        return output;
     }
 
     getEntries() {
@@ -301,7 +421,7 @@ class FakturoidStuff {
             key: ""
         }
 
-        this.time_unit_name = invoice_unit_name;
+        this.time_unit_name = STANDARD_UNIT_LABEL_HOUR;
         this.readForm();
     }
 
@@ -338,7 +458,7 @@ class FakturoidStuff {
         utils.log("tymorroid: logging in…");
         try {
             const response = utils.request(`https://app.fakturoid.cz/api/v2/accounts/${this.credentials.slug}/account.json`, "GET", this.headers);
-            if (ok_regex.test(response.statusCode)) {
+            if (HTTPS_OK_REGEX.test(response.statusCode)) {
 
                 // SUCCESS:
 
@@ -355,7 +475,7 @@ class FakturoidStuff {
                 // FAKTUROID (HTML) ERROR:
 
                 this.network_status.login_message = "Error"
-                this.network_status.login_detail = `Fakturoid connection: HTML error ${response.statusCode}`;
+                this.network_status.login_detail = `Fakturoid connection: HTTPS error ${response.statusCode}`;
             }
         } catch (error) {
 
@@ -376,7 +496,7 @@ class FakturoidStuff {
             try {
                 const response = utils.request(`https://app.fakturoid.cz/api/v2/accounts/${this.credentials.slug}/subjects.json`, "GET", this.headers, { "page": i });
 
-                if (ok_regex.test(response.statusCode)) {
+                if (HTTPS_OK_REGEX.test(response.statusCode)) {
                     // clients SUCCESS:
 
                     this.network_status.clients_successful = true;
@@ -454,14 +574,6 @@ class TymorroidBridge {
         utils.log(`tymorroid: prepared ${this.invoice_items.length} invoice items`);
     }
 
-    getTotalDuration() {
-        let output = 0;
-        for (const entry of this.tyme_obj.time_entries) {
-            output += entry.duration;
-        }
-        return output;
-    }
-
     getPreview() {
         this.generateInvoiceItems();
 
@@ -486,12 +598,13 @@ class TymorroidBridge {
         </thead>`;
 
         let total = {
-            quantity: 0,
             price: 0,
             unit_name: (this.invoice_items.length > 0) ? this.invoice_items[0].unit_name : "",
             vat_amount: 0,
-            price_incl_vat: 0
+            price_incl_vat: 0,
         };
+
+        let contains_timed_items;
 
         html_invoice_items += "<tbody>";
         for (const item of this.invoice_items) {
@@ -504,10 +617,11 @@ class TymorroidBridge {
                     <td style="align: left">${roundToSixth(item.quantity * item.unit_price)} ${this.currency}</td>
                 </tr>`;
 
-            if (item.unit_name == total.unit_name) {
-                total.quantity += item.quantity;
-            }
             total.price += item.unit_price * item.quantity;
+
+            if (!contains_timed_items && item.getType() === "timed") {
+                contains_timed_items = true;
+            }
         }
         html_invoice_items +=
             `<tr>
@@ -563,16 +677,19 @@ class TymorroidBridge {
             + html_invoice_total
             + "</div>";
 
-        // OTHER INFO (dates, account tidbits):
+        // DEBUG STATISTICS:
 
-        const html_debug =
+        let html_debug =
             `<h2>Tyme Info</h2>
         <tt>
             Start date: ${this.tyme_obj.start_date.toDateString()}<br>
-            End date: ${this.tyme_obj.end_date.toDateString()}<br>
-            Real total duration: ${minsToHourFloat(this.getTotalDuration(), this.fakt_obj.round_places)} h (${minsToHoursString(this.getTotalDuration())})<br>
-            Invoice total duration: ${roundToSixth(total.quantity)} ${total.unit_name}<br>
-        </tt>`;
+            End date: ${this.tyme_obj.end_date.toDateString()}<br>`;
+
+        if (contains_timed_items) {
+            html_debug += `Actual work hours: ${minutesToHoursRound(this.tyme_obj.getTotalTimeDuration(), 4)} h (${minsToHoursString(this.tyme_obj.getTotalTimeDuration())} h)<br>
+            `
+        }
+        html_debug += `</tt>`;
 
         const html_vat_note = `(The real sum${((total.vat_amount == 0) ? "" : " and VAT")} calculation is handled by Fakturoid, the above is just for illustration. If you've changed your Fakturoid tax defaults, please click "Check Login" and reopen this window.)`;
 
@@ -597,7 +714,7 @@ class TymorroidBridge {
                     this.invoice_body
                 );
 
-                if (ok_regex.test(response.statusCode)) {
+                if (HTTPS_OK_REGEX.test(response.statusCode)) {
                     const parsed_response = JSON.parse(response.result);
                     tyme.showAlert("Success", "Invoice generated with the number " + parsed_response.number);
 
@@ -619,7 +736,7 @@ class TymorroidBridge {
                 tyme.showAlert("Error", `${error}`);
             }
         } else {
-            tyme.showAlert("Error", "Please log in with Fakturoid and select a client!");
+            tyme.showAlert("Error", "Please log in with Fakturoid and select a client from the dropdown!");
         }
     }
 }
@@ -627,3 +744,8 @@ class TymorroidBridge {
 const tymeThing = new TymeStuff();
 const fakturoidThing = new FakturoidStuff();
 const mainThing = new TymorroidBridge(tymeThing, fakturoidThing);
+
+updateFormStatus_Dates();
+updateFormStatus_UnitNames();
+updateFormStatus_RoundMethod();
+updateFormStatus_Prefix();
